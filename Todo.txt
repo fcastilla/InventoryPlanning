@@ -1,0 +1,29 @@
+Clase ProblemData
+	- Metodo createScenario(horizonte, ...params)
+		Cria a lista de demandData com todos os dados e parâmetros necessários para o solver usar
+		
+Clase DemandData
+	- Demanda real
+	- getForeCastDemand(t, t0)
+	- getDesvioDemanda
+
+ClasProblem Solution
+	- Pode deixar do jeito que esta.
+	
+Clase Variavel
+	- var name
+	- colIndex
+	- Tipo (enum?)
+	- Otros Atributos
+	
+Solver GP:
+	- Metodo criar modelo
+	- Metodo criar restricoes
+	- 1 Metodo para criar cada tipo de variavel
+	- 1 Metodo para criar cada tipo de restrições
+	
+	
+
+	
+
+	
