@@ -14,6 +14,8 @@ from Variable import Variable
 class RobustSolver:
     def __init__(self):
         self.pData = pdata()
+        self.currentPeriod = 0
+        self.totalPeriods = int(params.horizon / params.robustInterval)
         self.currentDay = params.initialDay
         self.finalDay = self.currentDay + params.horizon
         self.initialStock = []  # the initial stock at each iteration
@@ -25,29 +27,31 @@ class RobustSolver:
 
     # Creates the linear program
     def createModel(self):
+        self.lp.objective.set_sense(self.lp.objective.sense.maximize)
         self.createVariables()
         self.createConstraints()
 
+    #region Variable Creation
     def createVariables(self):
         numVars = 0
-        numVars += self.createTimeIndexedVariable("d", params.unitPrice)
-        numVars += self.createTimeIndexedVariable("f", params.productAbscenceCost)
-        numVars += self.createTimeIndexedVariable("r", params.unitCost, params.repositionInterval)
-        numVars += self.createTimeIndexedVariable("s", params.unitStockageCost)
-        numVars += self.createTimeIndexedVariable("yplus", 0.0, 1, 0.0, 1.0)
-        numVars += self.createTimeIndexedVariable("yminus", 0.0, 1, 0.0, 1.0)
-        numVars += self.createTimeIndexedVariable("pi", 0.0, params.robustInterval)  # 1 for each 'robust' period
-        numVars += self.createTimeIndexedVariable("gamma")  # 1 for eac time instant
-        print(str(numVars) + " variables created.")
+        numVars += self.createTimeIndexedVariable("d", Variable.v_demand, 0.0)
+        numVars += self.createTimeIndexedVariable("f", Variable.v_fault, -params.productAbscenceCost)
+        numVars += self.createTimeIndexedVariable("r", Variable.v_reposition, -params.unitCost, params.repositionInterval)
+        numVars += self.createTimeIndexedVariable("s", Variable.v_stock, -params.unitStockageCost)
+        numVars += self.createTimeIndexedVariable("yplus", Variable.v_yplus, 0.0, 1, 0.0, 1.0)
+        numVars += self.createTimeIndexedVariable("yminus", Variable.v_yminus, 0.0, 1, 0.0, 1.0)
+        # numVars += self.createTimeIndexedVariable("pi", 0.0, params.robustInterval)  # 1 for each 'robust' period
+        # numVars += self.createTimeIndexedVariable("gamma")  # 1 for eac time instant
 
-    def createTimeIndexedVariable(self, name, coefficient=0.0, interval=1, lb=0.0, ub=100000):
+    def createTimeIndexedVariable(self, name, v_type, coefficient=0.0, interval=1, lb=0.0, ub=100000):
         numVars = 0
         for i in range(self.currentDay, self.finalDay, interval):
             v = Variable()
             v.name = name + str(i)
             v.col = self.numCols
             v.instant = i
-            v.period = self.getPeriod(i)
+            v.period = int(i / params.robustInterval)
+            v.type = v_type
             self.variables[v.name] = v
             self.lp.variables.add(obj=[coefficient], lb=[lb], ub=[ub], names=[v.name])
             self.numCols += 1
@@ -58,20 +62,21 @@ class RobustSolver:
         if vname in self.variables:
             return self.variables[vname]
         return 0
+    #endregion
 
+    #region Constraint Creation
     def createConstraints(self):
         numConst = 0;
         numConst += self.createInitialStockConstraint()
         numConst += self.createStockFlowConstraint()
         numConst += self.createDemandConstraint()
+        numConst += self.createRobustConstraint()
 
     def createInitialStockConstraint(self):
         v = self.variables["s" + str(self.currentDay)]
         mind = [v.col]
         mval = [1.0]
-        mConstraint = cplex.SparsePair(ind=mind, val=mval)
-        self.lp.linear_constraints.add(lin_expr=[mConstraint], senses=["E"],
-                                       rhs=[self.pData.getInitialStock()], names=["initial_stock"])
+        self.createConstraint(mind,mval,"E",self.pData.getInitialStock(),"initial_stock")
         return 1
 
     def createStockFlowConstraint(self):
@@ -85,7 +90,7 @@ class RobustSolver:
             s1 = self.getVariable("s" + str(t+1))
             d = self.getVariable("d" + str(t))
             f = self.getVariable("f" + str(t))
-            r = self.getVariable("r" + str(t))
+            r = self.getVariable("r" + str(t-1))
 
             mind.append(s.name)
             mval.append(1.0)
@@ -102,10 +107,7 @@ class RobustSolver:
                 mind.append(r.name)
                 mval.append(1.0)
 
-            mConstraint = cplex.SparsePair(ind=mind, val=mval)
-            self.lp.linear_constraints.add(lin_expr=[mConstraint],
-                                        senses=["E"], rhs=[0.0],
-                                        names=["stock_flow" + str(t)])
+            self.createConstraint(mind,mval,"E",0.0,"stock_flow" + str(t))
             numCons += 1
 
         return numCons
@@ -134,87 +136,148 @@ class RobustSolver:
             mind.append(yplus.name)
             mval.append(-deviation)
 
-            mConstraint = cplex.SparsePair(ind=mind, val=mval)
-            self.lp.linear_constraints.add(lin_expr=[mConstraint],
-                                        senses=["E"], rhs=[mean],
-                                        names=["c_demand" + str(t)])
+            self.createConstraint(mind,mval,"E",mean,"c_demand" + str(t))
+
+            numCons += 1
+
+        return numCons
+
+    def createRobustConstraint_old(self):
+        numCons = 0
+        mult = params.robustConstraintMultiplier
+        sense = params.robustConstraintSense
+
+        for i in range(self.currentPeriod,self.totalPeriods):
+            mind = []
+            mval = []
+            p = i * params.robustInterval
+
+            pi = self.getVariable("pi" + str(p)) # pi variable
+            mind.append(pi.name)
+            mval.append(params.pessimism * mult)
+
+            rhs = 0.0
+
+            for t in range(p, p + params.robustInterval):
+                demandData = self.pData.demandDataList[t]
+                mean = demandData.demand
+                rhs += (mean * mult)
+
+                s = self.getVariable("s" + str(t))
+                mind.append(s.name)
+                mval.append(1.0 * mult)
+
+                s1 = self.getVariable("s" + str(t+1))
+                if s1 != 0:
+                    mind.append(s1.name)
+                    mval.append(-1.0 * mult)
+
+                f = self.getVariable("f" + str(t))
+                mind.append(f.name)
+                mval.append(1.0 * mult)
+
+                r = self.getVariable("r" + str(t-1))
+                if r != 0:
+                    mind.append(r.name)
+                    mval.append(1.0 * mult)
+
+                gamma = self.getVariable("gamma" + str(t))
+                mind.append(gamma.name)
+                mval.append(1.0 * mult)
+
+            self.createConstraint(mind,mval,sense,rhs,"c_robust" + str(p))
+
             numCons += 1
 
         return numCons
 
     def createRobustConstraint(self):
-        print("ToDo")
+        numCons = 0
+        for p in range(self.currentPeriod, self.totalPeriods):
+            mind = []
+            mval = []
+            rhs = self.pData.getPessimism(p)
 
-    def getPeriod(self, i):
-        return int(i / params.robustInterval)
+            finalDay = min(((p * params.robustInterval) + params.robustInterval), self.finalDay)
+
+            for t in range(self.currentDay, finalDay):
+                yplus = self.getVariable("yplus" + str(t))
+                mind.append(yplus.name)
+                mval.append(1.0)
+
+                yminus = self.getVariable("yminus" + str(t))
+                mind.append(yminus.name)
+                mval.append(1.0)
+
+            self.createConstraint(mind,mval,"L",rhs,"c_robust" + str(p))
+
+        return numCons
+
+    def createConstraint(self, mind, mval, sense, rhs, name):
+        mConstraint = cplex.SparsePair(ind=mind, val=mval)
+        self.lp.linear_constraints.add(lin_expr=[mConstraint],
+                                    senses=[sense], rhs=[rhs],
+                                    names=[name])
+    #endregion
 
     def solve(self):
-        # set initial variables
-        pData = self.pData
-
         self.currentDay = params.initialDay
-        self.repositions = [0 for i in range(0, len(pData.demandDataList))]
-        self.initialStock = [0 for i in range(0, len(pData.demandDataList))]
-        self.initialStock[self.currentDay] = pData.getInitialStock()
+        self.currentPeriod = 0
+        self.repositions = [0 for i in range(0, len(self.pData.demandDataList))]
+        self.initialStock = [0 for i in range(0, len(self.pData.demandDataList))]
+        self.initialStock[self.currentDay] = self.pData.getInitialStock()
 
         # begin the iterative procedure
         iterations = 0
         try:
-            while iterations < params.horizon:
+            while iterations < 1:
                 np.random.seed(iterations)
 
                 # calculate demand forecast
-                pData.calculateDemandForecast(self.currentDay)
+                self.pData.calculateDemandForecast(self.currentDay)
 
                 # create lp
-                prob = cplex.Cplex()
-                # prob.set_log_stream(None)
-                # prob.set_error_stream(None)
-                # prob.set_warning_stream(None)
-                # prob.set_results_stream(None)
-                self.createModel(prob)
+                self.lp = cplex.Cplex()
+                self.lp.set_log_stream(None)
+                self.lp.set_error_stream(None)
+                self.lp.set_warning_stream(None)
+                self.lp.set_results_stream(None)
+                self.createModel()
 
                 # write the lp and solve the model
-                prob.write(".\\..\\lps\\test" + str(self.currentDay) + ".lp")
-                prob.solve()
+                self.lp.write(".\\..\\lps\\robust_period_" + str(self.currentPeriod) + ".lp")
+                self.lp.solve()
 
                 # process solution, get stock reposition for current day and stock for next planning day
-                solution = prob.solution
+                solution = self.lp.solution
+                objValue = solution.get_objective_value()
                 x = solution.get_values()
 
-                for i in range(len(x)):
+                print "**********************************************"
+                print "Robust - Period " + str(self.currentPeriod) + " obj val: " + str(objValue)
+
+                for k,v in self.variables.iteritems():
                     # load the reposition and stock quantity
-                    varName = self.vNames[i]
-                    varType = varName[:1]
-                    t = int(varName[1:])
+                    col = v.col
+                    t = v.instant
+                    solVal = x[col]
 
-                    if varType == "r":
-                        self.repositions[t] = x[i]
-                    elif varType == "s":
-                        self.initialStock[t] = x[i]
+                    print v.name, "=", solVal
 
-                self.solutions.append(ProblemSolution(pData.demandDataList,
-                                                      self.repositions, self.initialStock))
+                    if v.type == Variable.v_reposition:
+                        self.repositions[t] = solVal
+                    elif v.type == Variable.v_stock:
+                        self.initialStock[t] = solVal
 
-                self.currentDay += 1
+                self.solutions.append(ProblemSolution(self.pData.demandDataList,
+                                                      self.repositions, self.initialStock,objValue))
+
+                self.currentPeriod += 1
+                self.currentDay = self.currentPeriod * params.robustInterval
+                self.variables = {}
+                self.numCols = 0
+
                 iterations += 1
         except:
             print "Error on t" + str(self.currentDay)
             raise
-
-    def test(self):
-        #create lp
-        self.lp = cplex.Cplex()
-        self.lp.objective.set_sense(self.lp.objective.sense.maximize)
-        # prob.set_log_stream(None)
-        # prob.set_error_stream(None)
-        # prob.set_warning_stream(None)
-        # prob.set_results_stream(None)
-
-        self.pData.calculateDemandForecast(self.currentDay)
-        self.createModel()
-
-        # write lp to file
-        self.lp.write(".\\..\\lps\\robust_day_" + str(self.currentDay) + ".lp")
-        self.lp.solve()
-

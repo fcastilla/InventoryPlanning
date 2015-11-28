@@ -1,5 +1,7 @@
 import csv
+import math
 import numpy as np
+import random
 from Parameters import Parameters as params
 from DemandData import DemandData
 from datetime import datetime
@@ -9,6 +11,7 @@ class ProblemData:
     # Constructor
     def __init__(self):
         self.demandDataList = []
+        self.pessimismValues = []
         self.readDatafile()
 
     # Reads data file
@@ -44,15 +47,32 @@ class ProblemData:
     #Calculates the 'fake' forecast demand for all days
     #based on an initial day given real demand
     def calculateDemandForecast(self, t0):
+        y = []
+        sum = 0
+        for i in range(0, params.horizon):
+            y.append(np.random.uniform(-1,1))
+            sum += math.fabs(y[i])
+
+        for i in range(0, params.horizon):
+            y[i] *= (params.defaultPessimism / sum)
+
         initialDemandData = self.demandDataList[t0]
         for t in range(t0, t0 + params.horizon):
             demandData = self.demandDataList[t]
-            demandData.deviation = demandData.demand * float(0.05*(t-t0));
-            lb = demandData.demand * (1 - (0.05*(t-t0)))
-            ub = demandData.demand * (1 + (0.05*(t-t0)))
-            error = 0
-            if (initialDemandData.demand > 0):
-                error = np.random.normal(0, initialDemandData.demand / 10)
-            demandData.forecastDemand = max(0, np.random.uniform(lb,ub) + error)
 
+            deviation = (demandData.demand * float(0.05*math.sqrt(t-t0))) - demandData.demand;
+            lb = demandData.demand - deviation
+            ub = demandData.demand + deviation
+            #demandData.forecastDemand = np.random.uniform(ub,ub)
 
+            demandData.forecastDemand = max(0, demandData.demand + (deviation * y[t]))
+
+            # lb = demandData.demand * (1 - (0.05*(t-t0)))
+            # ub = demandData.demand * (1 + (0.05*(t-t0)))
+            # error = 0
+            # if (initialDemandData.demand > 0):
+            #     error = np.random.normal(0, initialDemandData.demand / 10)
+            # demandData.forecastDemand = max(0, np.random.uniform(lb,ub) + error)
+
+    def getPessimism(self,period):
+        return params.defaultPessimism

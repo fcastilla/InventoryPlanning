@@ -1,6 +1,6 @@
 import cplex
 import numpy as np
-
+from Variable import Variable
 from src.inputdata.Parameters import Parameters as params
 from src.inputdata.ProblemData import ProblemData as pdata
 from src.solutiondata.ProblemSolution import ProblemSolution
@@ -14,133 +14,186 @@ class DeterministicSolver:
     def __init__(self):
         self.pData = pdata()
         self.currentDay = params.initialDay
+        self.finalDay = self.currentDay + params.horizon
         self.initialStock = []  # the initial stock at each iteration
         self.repositions = []  # the amounts repositioned to stock for each day
-        self.vNames = []  # all variable names
+        self.variables = {} # all model variables
         self.solutions = []  # solutions of all iterations
+        self.lp = 0
+        self.numCols = 0
 
     # Creates the linear program
-    def createModel(self, prob):
-        pData = self.pData
-        currentDay = self.currentDay
+    def createModel(self):
+        self.lp.objective.set_sense(self.lp.objective.sense.maximize)
+        self.createVariables()
+        self.createConstraints()
 
-        # set problem sense
-        prob.objective.set_sense(prob.objective.sense.maximize)
+    #region Variable Creation
+    def createVariables(self):
+        numVars = 0
+        numVars += self.createDemandVariable()
+        numVars += self.createTimeIndexedVariable("f", Variable.v_fault, -params.productAbscenceCost)
+        numVars += self.createTimeIndexedVariable("r", Variable.v_reposition, -params.unitCost, params.repositionInterval)
+        numVars += self.createTimeIndexedVariable("s", Variable.v_stock, -params.unitStockageCost)
 
-        # ================
-        # Create Variables
-        # ================
-        # Create a continuous f variable for each day
-        fVarNames = ["f" + str(t) for t in range(currentDay, currentDay + params.horizon)]
-        fVarObj = [-params.productAbscenceCost] * params.horizon
-        fVarUB = [d.demand for d in pData.demandDataList[currentDay:currentDay + params.horizon]]
-        prob.variables.add(obj=fVarObj, ub=fVarUB, names=fVarNames)
+    def createDemandVariable(self):
+        numVars = 0
+        for i in range(self.currentDay, self.finalDay):
+            v = Variable()
+            v.name = "d" + str(i)
+            v.col = self.numCols
+            v.instant = i
+            v.period = int(i / params.robustInterval)
+            v.type = Variable.v_demand
+            demand = self.pData.demandDataList[i].forecastDemand
+            self.variables[v.name] = v
+            self.lp.variables.add(obj=[params.unitPrice], lb=[demand], ub=[demand], names=[v.name])
+            self.numCols += 1
+            numVars += 1
+        return numVars
 
-        # Create a continuous r variable for each day
-        rVarNames = ["r" + str(t) for t in range(currentDay, currentDay + params.horizon)]
-        rVarObj = [-params.unitCost] * params.horizon
-        prob.variables.add(obj=rVarObj, names=rVarNames)
+    def createTimeIndexedVariable(self, name, v_type, coefficient=0.0, interval=1, lb=0.0, ub=100000):
+        numVars = 0
+        for i in range(self.currentDay, self.finalDay, interval):
+            v = Variable()
+            v.name = name + str(i)
+            v.col = self.numCols
+            v.instant = i
+            v.period = int(i / params.robustInterval)
+            v.type = v_type
+            self.variables[v.name] = v
+            self.lp.variables.add(obj=[coefficient], lb=[lb], ub=[ub], names=[v.name])
+            self.numCols += 1
+            numVars += 1
+        return numVars
 
-        # Create a continuous s variable for each day but the first one (t0)
-        sVarNames = ["s" + str(t) for t in range(currentDay + 1, currentDay + params.horizon + 1)]
-        sVarObj = [-params.unitStockageCost] * (params.horizon)
-        prob.variables.add(obj=sVarObj, names=sVarNames)
+    def getVariable(self, vname):
+        if vname in self.variables:
+            return self.variables[vname]
+        return 0
+    #endregion
 
-        self.vNames = fVarNames + rVarNames + sVarNames
-        sVarNames.insert(0, "s" + str(currentDay))  # for indices to match names
-        # ================
+    #region Constraint Creation
+    def createConstraints(self):
+        numConst = 0;
+        numConst += self.createInitialStockConstraint()
+        numConst += self.createStockFlowConstraint()
 
-        # ==================
-        # Create Constraints
-        # ==================
+    def createInitialStockConstraint(self):
+        v = self.variables["s" + str(self.currentDay)]
+        mind = [v.col]
+        mval = [1.0]
+        self.createConstraint(mind,mval,"E",self.pData.getInitialStock(),"initial_stock")
+        return 1
 
-        # Stock flow? contraint
-        for t in range(currentDay, currentDay + params.horizon):
-            # s_{t} + r_{t-1} + f_{t} - s_{t+1} = d_{t}
-            mInd = []
-            mVal = []
-            demand = pData.demandDataList[t].forecastDemand
+    def createStockFlowConstraint(self):
+        numCons = 0
+        # s_{t} + r_{t-1} + f_{t} - s_{t+1} = d_{t}
+        for t in range(self.currentDay, self.finalDay):
+            mind =[]
+            mval =[]
 
-            if (t - 1) >= currentDay:
-                # the reposition variable should exist, so add it
-                mInd.append("r" + str(t - 1))
-                mVal.append(1.0)
-            elif (currentDay - 1) >= 0:
-                # obtain historical stock reposition value
-                demand -= self.repositions[currentDay - 1]
+            demand = self.pData.demandDataList[t].forecastDemand
 
-            if t < (currentDay + params.horizon):
-                mInd.append("s" + str(t + 1))
-                mVal.append(-1.0)
+            s = self.getVariable("s" + str(t))
+            s1 = self.getVariable("s" + str(t+1))
+            d = self.getVariable("d" + str(t))
+            f = self.getVariable("f" + str(t))
+            r = self.getVariable("r" + str(t-1))
 
-            if t > currentDay:
-                mInd.append("s" + str(t))
-                mVal.append(1.0)
+            mind.append(s.name)
+            mval.append(1.0)
+            mind.append(f.name)
+            mval.append(1.0)
+            mind.append(d.name)
+            mval.append(-1.0)
 
-            mInd.append("f" + str(t))
-            mVal.append(1.0)
+            if s1 != 0:
+                mind.append(s1.name)
+                mval.append(-1.0)
 
-            if t == currentDay:
-                demand -= self.initialStock[currentDay]
+            if r != 0:
+                mind.append(r.name)
+                mval.append(1.0)
 
-            mConstraint = cplex.SparsePair(ind=mInd, val=mVal)
-            prob.linear_constraints.add(lin_expr=[mConstraint],
-                                        senses=["E"], rhs=[demand],
-                                        names=["c_t" + str(t)])
+            self.createConstraint(mind,mval,"E",0.0,"stock_flow" + str(t))
+            numCons += 1
 
-            # ==================
+        return numCons
+
+    def createConstraint(self, mind, mval, sense, rhs, name):
+        mConstraint = cplex.SparsePair(ind=mind, val=mval)
+        self.lp.linear_constraints.add(lin_expr=[mConstraint],
+                                    senses=[sense], rhs=[rhs],
+                                    names=[name])
+    #endregion
 
     def solve(self):
-        # set initial variables
-        pData = self.pData
-
         self.currentDay = params.initialDay
-        self.repositions = [0 for i in range(0, len(pData.demandDataList))]
-        self.initialStock = [0 for i in range(0, len(pData.demandDataList))]
-        self.initialStock[self.currentDay] = pData.getInitialStock()
+        self.currentPeriod = 0
+        self.repositions = [0 for i in range(0, len(self.pData.demandDataList))]
+        self.initialStock = [0 for i in range(0, len(self.pData.demandDataList))]
+        self.initialStock[self.currentDay] = self.pData.getInitialStock()
 
         # begin the iterative procedure
         iterations = 0
+        minVal = 100000000000000
+        maxVal = -100000000000000
         try:
-            while iterations < params.horizon:
+            while iterations < 1000:
                 np.random.seed(iterations)
 
                 # calculate demand forecast
-                pData.calculateDemandForecast(self.currentDay)
+                self.pData.calculateDemandForecast(self.currentDay)
 
                 # create lp
-                prob = cplex.Cplex()
-                # prob.set_log_stream(None)
-                # prob.set_error_stream(None)
-                # prob.set_warning_stream(None)
-                # prob.set_results_stream(None)
-                self.createModel(prob)
+                self.lp = cplex.Cplex()
+                self.lp.set_log_stream(None)
+                self.lp.set_error_stream(None)
+                self.lp.set_warning_stream(None)
+                self.lp.set_results_stream(None)
+                self.createModel()
 
                 # write the lp and solve the model
-                prob.write(".\\..\\lps\\test" + str(self.currentDay) + ".lp")
-                prob.solve()
+                # self.lp.write(".\\..\\lps\\deterministico_" + str(iterations) + ".lp")
+                self.lp.solve()
 
                 # process solution, get stock reposition for current day and stock for next planning day
-                solution = prob.solution
+                solution = self.lp.solution
+                objValue = solution.get_objective_value()
+
+                minVal = min(minVal, objValue)
+                maxVal = max(maxVal, objValue)
+
                 x = solution.get_values()
 
-                for i in range(len(x)):
+                # print "**********************************************"
+                print "Deterministico - t" + str(self.currentDay) + " obj val: " + str(objValue)
+
+                for k,v in self.variables.iteritems():
                     # load the reposition and stock quantity
-                    varName = self.vNames[i]
-                    varType = varName[:1]
-                    t = int(varName[1:])
+                    col = v.col
+                    t = v.instant
+                    solVal = x[col]
 
-                    if varType == "r":
-                        self.repositions[t] = x[i]
-                    elif varType == "s":
-                        self.initialStock[t] = x[i]
+                    # print v.name, "=", solVal
 
-                self.solutions.append(ProblemSolution(pData.demandDataList,
-                                                      self.repositions, self.initialStock))
+                    if v.type == Variable.v_reposition:
+                        self.repositions[t] = solVal
+                    elif v.type == Variable.v_stock:
+                        self.initialStock[t] = solVal
 
-                self.currentDay += 1
+                self.solutions.append(ProblemSolution(self.pData.demandDataList,
+                                                      self.repositions, self.initialStock,objValue))
+
+                #self.currentDay += 1
+                self.variables = {}
+                self.numCols = 0
+
                 iterations += 1
         except:
             print "Error on t" + str(self.currentDay)
             raise
 
+        print "Pior valor da fo:", minVal
+        print "Melhor valor da fo:", maxVal

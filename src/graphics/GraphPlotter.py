@@ -1,5 +1,6 @@
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 
 from src.inputdata.Parameters import Parameters as params
@@ -10,7 +11,7 @@ class GraphPlotter:
         self.problem_data = problem_data
         self.problem_solutions = problem_solutions
 
-    def plot(self):
+    def plotStock(self):
         demandDataList = self.problem_data.demandDataList
         initialDay = params.initialDay
         horizon = params.horizon
@@ -51,5 +52,35 @@ class GraphPlotter:
             return lineDF, lineST, lineT
 
         ani = animation.FuncAnimation(fig, animate, np.arange(initialDay, initialDay + horizon), interval=1000, blit=True)
+
+        plt.show()
+
+    def plotObjVal(self):
+        demandDataList = self.problem_data.demandDataList
+        initialDay = params.initialDay
+        horizon = params.horizon
+        solutions = self.problem_solutions
+
+        #create a new figure
+        fig = plt.figure()
+        ax1 = fig.add_subplot(2, 1, 1)
+        ax2 = fig.add_subplot(2, 1, 2)
+
+        ax1.set_xlabel('Periods')
+        ax1.set_ylabel('Obj Val')
+
+        ax2.set_xlabel('Periods')
+        ax2.set_ylabel('Stock')
+
+        # create x coordinates
+        x = [i for i in range(len(solutions))]
+
+        # objective value
+        y = np.ma.array([solutions[i].objVal for i in range(len(solutions))])
+
+        print len(x)
+        print len(y)
+
+        lineObjVal, = ax1.plot(x, y)
 
         plt.show()
