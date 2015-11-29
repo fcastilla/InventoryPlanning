@@ -22,6 +22,27 @@ Solver GP:
 	- 1 Metodo para criar cada tipo de variavel
 	- 1 Metodo para criar cada tipo de restrições
 	
+ROBUST OPTIMIZATION PRESENTATION
+- Conseguir rodar para mais de um intervalo de robustez
+	- Geracao dos y para cada intervalo somando Gamma
+
+- Politicas de reabastecimento:
+	- Politica de tudo dia
+	- Politica de cada x dias 
+
+- Colocar um upper bound para a variavel de reposicionamento
+	- UB = a máxima demanda do intervalo
+	
+- Rodar varios experimentos variando:
+	- Variando o erro de forecast de demanda
+	- Valores de gamma [0, 0.5, 1, 1.5, ]
+	- Variando os dias do scenario (dia 100 ao 200), (300 ao 400)
+	
+- Para cada experimento armazenar o valor de r decidido em t0 para cada iteração
+
+- MDS
+
+	
 	
 
 	
