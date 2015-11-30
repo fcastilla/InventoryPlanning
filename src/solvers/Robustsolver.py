@@ -10,7 +10,7 @@ from src.solutiondata.ProblemSolution import ProblemSolution
 # 1 time instant = 1 day
 # ToDo: parametrize time period discretization
 
-class DeterministicSolver:
+class RobustSolver:
     def __init__(self, pData):
         self.pData = pData
         self.currentDay = params.initialDay
@@ -22,7 +22,6 @@ class DeterministicSolver:
         self.variables = {}
         self.numCols = 0
         self.problemSolution = 0
-
 
     # Creates the linear program
     def createModel(self):
@@ -46,7 +45,7 @@ class DeterministicSolver:
             v.col = self.numCols
             v.instant = i
             v.type = Variable.v_demand
-            demand = self.pData.demandDataList[i].forecastDemand
+            demand = self.pData.demandDataList[i].robustDemand
             self.variables[v.name] = v
             self.lp.variables.add(obj=[params.unitPrice], lb=[demand], ub=[demand], names=[v.name])
             self.numCols += 1
@@ -63,7 +62,7 @@ class DeterministicSolver:
             v.col = self.numCols
             v.instant = i
             v.type = Variable.v_demand
-            maxReposition = self.pData.maxDeterministicDemand
+            maxReposition = self.pData.maxRobustDemand
             self.variables[v.name] = v
             self.lp.variables.add(obj=[-params.unitCost], ub=[maxReposition], names=[v.name])
             self.numCols += 1
@@ -131,7 +130,7 @@ class DeterministicSolver:
             if r != 0:
                 mind.append(r.name)
                 mval.append(1.0)
-            elif (t-1) > 0: # get data from previous iterations
+            elif (t-1) > 0:
                 rhs -= self.repositions[t-1]
 
             self.createConstraint(mind,mval,"E",rhs,"stock_flow" + str(t))
@@ -160,38 +159,53 @@ class DeterministicSolver:
         self.lp.set_results_stream(None)
         self.createModel()
 
-    def solve(self, day=0):
+    def solve(self, day, maxIterations=1):
         self.currentDay = day
         self.finalDay = self.currentDay + params.horizon
 
+        # begin the iterative procedure
+        iterations = 0
+        minVal = 100000000000000
         try:
-            # create lp
-            self.createLp()
+            while iterations < maxIterations:
+                # create lp
+                self.createLp()
 
-            # write the lp
-            self.lp.write(".\\..\\lps\\deterministico_dia" + str(day) + ".lp")
+                # write the lp
+                self.lp.write(".\\..\\lps\\robusto_day" + str(self.currentDay) + "_iter" + str(iterations) + ".lp")
 
-            # solve the model
-            self.lp.solve()
+                # solve the model
+                self.lp.solve()
 
-            # process solution, get stock reposition for current day and stock for next planning day
-            solution = self.lp.solution
-            objValue = solution.get_objective_value()
-            x = solution.get_values()
+                # process solution, get stock reposition for current day and stock for next planning day
+                solution = self.lp.solution
+                objValue = solution.get_objective_value()
+                x = solution.get_values()
 
-            for k,v in self.variables.iteritems():
-                # load the reposition and stock quantity
-                col = v.col
-                t = v.instant
-                solVal = x[col]
+                # check if we need to update the current "worst" solution
+                if objValue < minVal:
+                    # update worst solution value
+                    minVal = objValue
 
-                if v.type == Variable.v_reposition:
-                    self.repositions[t] = solVal
-                elif v.type == Variable.v_stock:
-                    self.initialStock[t] = solVal
+                    # process solution
+                    for k,v in self.variables.iteritems():
+                        # load the reposition and stock quantity
+                        col = v.col
+                        t = v.instant
+                        solVal = x[col]
 
-            self.problemSolution = ProblemSolution(self.currentDay,
-                                                   self.repositions[self.currentDay], objValue)
+                        if v.type == Variable.v_reposition:
+                            self.repositions[t] = solVal
+                        elif v.type == Variable.v_stock:
+                            self.initialStock[t] = solVal
+
+                    # store solution
+                    self.problemSolution = ProblemSolution(self.currentDay,
+                                                           self.repositions[self.currentDay], objValue)
+
+                # recalculate robust demand for next iteration
+                self.pData.calculateDemandForecast(self.currentDay)
+                iterations += 1
 
         except:
             print "Error on t" + str(self.currentDay)

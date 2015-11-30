@@ -36,23 +36,25 @@ SOBRE O HORIZONTE DE PLANEJAMENTO
     - ...
 
 TODO
+General:
+- Colocar o random seed no main
+
 ProblemData:
-- Criar dataset com todos os dias 
-- Criar metodo no problem data para gerar os valores de y separadamente.
-    - Os valores de Y debem somar \Gamma para cada intervalo robusto.
-- Parametrizar o erro do forecast da demanda.
-- Calcular dois valores de forecast de demanda:
-    - Usando os Y para o solver robusto
-    - Sem usar os Y para o solver deterministico.
+- Criar dataset com todos os dias (ok)
+- Criar metodo no problem data para gerar os valores de y separadamente.(ok)
+    - Os valores de Y debem somar \Gamma para cada intervalo robusto. (ok)
+- Parametrizar o erro do forecast da demanda.(ok)
+- Calcular dois valores de forecast de demanda: (ok)
+    - Usando os Y para o solver robusto (ok)
+    - Sem usar os Y para o solver deterministico. (ok)
 
 Solvers
-- O problemdata deve ser gerenciado no main.py
-- Deixar a classe do solver deterministico sem a demanda como uma variavel.
-- Colocar no solver robusto a demanda como uma variavel e fixar os bounds dela na criação, usando o valor calculado para Y
-- O metodo solve de ambas clases deve receber o dia inicial como parametro. Esse método sólo ira rodar um dia
-- No caso do solver robusto, adicionar um parametro ao metodo solve, para controlar quantas rodadas devem ser feitas. Sempre retornar a pior.
-- O metodo solve dos solver deve retornar um ProblemSolution. Os problem solutions deben ser gerenciados no main.py
-- Implementar a politica de reposicionamente parametrizavel. Colocar um upper bound para essa variavel.
+- O problemdata deve ser gerenciado no main.py (não sempre)
+- Colocar no solver robusto a demanda como uma variavel e fixar os bounds dela na criação, usando o valor calculado para Y (ok)
+- O metodo solve de ambas clases deve receber o dia inicial como parametro. Esse método sólo ira rodar um dia (ok)
+- No caso do solver robusto, adicionar um parametro ao metodo solve, para controlar quantas rodadas devem ser feitas. Sempre retornar a pior. (ok)
+- O metodo solve dos solver deve retornar um ProblemSolution. Os problem solutions deben ser gerenciados no main.py (ok)
+- Implementar a politica de reposicionamente parametrizavel. Colocar um upper bound para essa variavel. (ok)
 
 Output
 - Escolher uma biblioteca de javascript para visualização de dados.
