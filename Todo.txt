@@ -1,34 +1,10 @@
-Clase ProblemData
-	- Metodo createScenario(horizonte, ...params)
-		Cria a lista de demandData com todos os dados e parâmetros necessários para o solver usar
-		
-Clase DemandData
-	- Demanda real
-	- getForeCastDemand(t, t0)
-	- getDesvioDemanda
-
-ClasProblem Solution
-	- Pode deixar do jeito que esta.
-	
-Clase Variavel
-	- var name
-	- colIndex
-	- Tipo (enum?)
-	- Otros Atributos
-	
-Solver GP:
-	- Metodo criar modelo
-	- Metodo criar restricoes
-	- 1 Metodo para criar cada tipo de variavel
-	- 1 Metodo para criar cada tipo de restrições
-	
 ROBUST OPTIMIZATION PRESENTATION
 - Conseguir rodar para mais de um intervalo de robustez
 	- Geracao dos y para cada intervalo somando Gamma
 
 - Politicas de reabastecimento:
-	- Politica de tudo dia
-	- Politica de cada x dias 
+	- A cada x dias
+	- Dias especificos [1, 3, 6, 8, 9, 14] etc...
 
 - Colocar um upper bound para a variavel de reposicionamento
 	- UB = a máxima demanda do intervalo
@@ -41,6 +17,59 @@ ROBUST OPTIMIZATION PRESENTATION
 - Para cada experimento armazenar o valor de r decidido em t0 para cada iteração
 
 - MDS
+
+SOBRE O HORIZONTE DE PLANEJAMENTO
+- O horizonte de planejamento será 30 dias, com periodos robustos de 5 dias.
+- O planejamento será executado iterativamente para cada 1 desses 30 dias.
+    - A cada iteração serão planejados 30 dias para a frente. Por exemplo:
+        - No planejamento do dia 1, o modelo será criado do dia 1 ao 30
+        - No planejamento do dia 2, o modelo será criado do dia 2 ao 31
+        - No planejamento do dia 3, o modelo será criado do dia 3 ao 32
+        - ...
+- Os dias em que pode ser feito um reposicionamento (compra) serão definidos antes do inicio da simulação e serão os mesmos para tudo o experimento. Deve ser parametrizável. Exemplo:
+    - Compras possiveis a cada 2 dias [0, 2, 4, 6, 8 ...] independentemente do dia de planejamento, esses dias são os únicos que dá pra comprar.
+    - Compras possiveis em [1, 5, 7, 8, 10, 14 ...]
+
+- O intervalo de robustes debe ir deslocandose com o dia atual de planejamento. Por exemplo, se o intervalo é 5 dias:
+    - No dia 1 os intervalos serão [1-4] [5-9] [10-14] ...
+    - No dia 2 os intervalos serão [2-5] [6-10] [11-15] ...
+    - ...
+
+TODO
+ProblemData:
+- Criar dataset com todos os dias 
+- Criar metodo no problem data para gerar os valores de y separadamente.
+    - Os valores de Y debem somar \Gamma para cada intervalo robusto.
+- Parametrizar o erro do forecast da demanda.
+- Calcular dois valores de forecast de demanda:
+    - Usando os Y para o solver robusto
+    - Sem usar os Y para o solver deterministico.
+
+Solvers
+- O problemdata deve ser gerenciado no main.py
+- Deixar a classe do solver deterministico sem a demanda como uma variavel.
+- Colocar no solver robusto a demanda como uma variavel e fixar os bounds dela na criação, usando o valor calculado para Y
+- O metodo solve de ambas clases deve receber o dia inicial como parametro. Esse método sólo ira rodar um dia
+- No caso do solver robusto, adicionar um parametro ao metodo solve, para controlar quantas rodadas devem ser feitas. Sempre retornar a pior.
+- O metodo solve dos solver deve retornar um ProblemSolution. Os problem solutions deben ser gerenciados no main.py
+- Implementar a politica de reposicionamente parametrizavel. Colocar um upper bound para essa variavel.
+
+Output
+- Escolher uma biblioteca de javascript para visualização de dados.
+- Em base a biblioteca escolhida, definir um formato de saida para o resultado:
+    - Para cada combinação de Gamma e Erro armazenar o valor da FO e Reposicionamento em t0 para cada dia de planejamento.
+- Tentar montar um primeiro gráfico
+
+Extras
+- Montar uma interface Web que permita inserir alguns parâmetros e executar a simulação
+- Criar gráficos que atualizem de forma asincrona, assim que os resultado de cada dia vão ficando disponiveis.
+
+NOTAS
+- Rodar a cada instante (dia a dia no nosso caso) emula o caso real, onde nova informação chega, um novo forecast de demanda é calculado e a estrategia é reajustada.
+- O que debe acontecer para que o robusto supere ao deterministico?
+    - Com muita incerteça, o robusto deberia começar a ganhar (cenários mais nervosos)
+
+
 
 	
 	
