@@ -46,7 +46,7 @@ class DeterministicSolver:
             v.col = self.numCols
             v.instant = i
             v.type = Variable.v_demand
-            demand = self.pData.demandDataList[i].forecastDemand
+            demand = self.pData.demandDataList[i].demand
             self.variables[v.name] = v
             self.lp.variables.add(obj=[params.unitPrice], lb=[demand], ub=[demand], names=[v.name])
             self.numCols += 1
@@ -55,15 +55,15 @@ class DeterministicSolver:
 
     def createRepositionVariable(self):
         numVars = 0
-        repositionDays = [rDay for rDay in self.pData.repositionDays if rDay < self.finalDay]
+        repositionDays = [rDay for rDay in self.pData.repositionDays if rDay >= self.currentDay and rDay < self.finalDay]
 
         for i in repositionDays:
             v = Variable()
             v.name = "r" + str(i)
             v.col = self.numCols
             v.instant = i
-            v.type = Variable.v_demand
-            maxReposition = self.pData.maxDeterministicDemand
+            v.type = Variable.v_reposition
+            maxReposition = self.pData.maxDemand
             self.variables[v.name] = v
             self.lp.variables.add(obj=[-params.unitCost], ub=[maxReposition], names=[v.name])
             self.numCols += 1
@@ -72,7 +72,7 @@ class DeterministicSolver:
 
     def createTimeIndexedVariable(self, name, v_type, coefficient=0.0, interval=1, lb=0.0, ub=1000000):
         numVars = 0
-        for i in range(self.currentDay, self.finalDay, interval):
+        for i in range(self.currentDay, self.finalDay+1, interval):
             v = Variable()
             v.name = name + str(i)
             v.col = self.numCols
@@ -131,7 +131,7 @@ class DeterministicSolver:
             if r != 0:
                 mind.append(r.name)
                 mval.append(1.0)
-            elif (t-1) > 0: # get data from previous iterations
+            elif (t-1) >= 0: # get data from previous iterations
                 rhs -= self.repositions[t-1]
 
             self.createConstraint(mind,mval,"E",rhs,"stock_flow" + str(t))
@@ -162,14 +162,14 @@ class DeterministicSolver:
 
     def solve(self, day=0):
         self.currentDay = day
-        self.finalDay = self.currentDay + params.horizon
+        self.finalDay = params.initialDay + params.horizon  # self.currentDay + params.horizon
 
         try:
             # create lp
             self.createLp()
 
             # write the lp
-            self.lp.write(".\\..\\lps\\deterministico_dia" + str(day) + ".lp")
+            # self.lp.write(".\\..\\lps\\deterministico_dia" + str(day) + ".lp")
 
             # solve the model
             self.lp.solve()

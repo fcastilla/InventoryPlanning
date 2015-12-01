@@ -16,8 +16,8 @@ class Parameters:
     currentRobustness = 0
 
     # Scenario data
-    uncertainties = [0.2]
-    robustness = [1]
+    uncertainties = [0.05, 0.1, 0.15, 0.2, 0.25]
+    robustness = [0.5, 1, 1.5, 2, 2.5, 3]
 
 
 

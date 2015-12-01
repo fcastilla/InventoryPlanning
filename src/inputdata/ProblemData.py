@@ -11,9 +11,8 @@ class ProblemData:
     # Constructor
     def __init__(self):
         self.demandDataList = []
-        self.pessimismValues = []
-        self.maxDeterministicDemand = 0.0
-        self.maxRobustDemand = 0.0
+        self.maxDemand = 0.0
+        self.maxDemandForecast = 0.0
         self.y = []
         self.repositionDays = []
         self.readDatafile()
@@ -79,14 +78,10 @@ class ProblemData:
             #error = np.random.normal(0, initialDemandData.demand / 10)
 
             # robust demand
-            demandData.robustDemand = max(0, demandData.demand + (deviation * self.y[yIdx]) + error)
-            self.maxRobustDemand = max(self.maxRobustDemand, demandData.robustDemand)
+            demandData.forecastDemand = max(0, demandData.demand + (deviation * self.y[yIdx]) + error)
 
-            # demand forecast (for deterministic solver)
-            lb = demandData.demand - deviation
-            ub = demandData.demand + deviation
-            demandData.forecastDemand = max(0, np.random.uniform(lb,ub) + error)
-            self.maxDeterministicDemand = max(self.maxDeterministicDemand, demandData.forecastDemand)
+            self.maxDemandForecast = max(self.maxDemandForecast, demandData.forecastDemand)
+            self.maxDemand = max(self.maxDemand, demandData.demand)
 
             yIdx += 1
 

@@ -45,7 +45,7 @@ class RobustSolver:
             v.col = self.numCols
             v.instant = i
             v.type = Variable.v_demand
-            demand = self.pData.demandDataList[i].robustDemand
+            demand = self.pData.demandDataList[i].forecastDemand
             self.variables[v.name] = v
             self.lp.variables.add(obj=[params.unitPrice], lb=[demand], ub=[demand], names=[v.name])
             self.numCols += 1
@@ -54,15 +54,15 @@ class RobustSolver:
 
     def createRepositionVariable(self):
         numVars = 0
-        repositionDays = [rDay for rDay in self.pData.repositionDays if rDay < self.finalDay]
+        repositionDays = [rDay for rDay in self.pData.repositionDays if rDay >= self.currentDay and rDay < self.finalDay]
 
         for i in repositionDays:
             v = Variable()
             v.name = "r" + str(i)
             v.col = self.numCols
             v.instant = i
-            v.type = Variable.v_demand
-            maxReposition = self.pData.maxRobustDemand
+            v.type = Variable.v_reposition
+            maxReposition = self.pData.maxDemandForecast
             self.variables[v.name] = v
             self.lp.variables.add(obj=[-params.unitCost], ub=[maxReposition], names=[v.name])
             self.numCols += 1
@@ -71,7 +71,7 @@ class RobustSolver:
 
     def createTimeIndexedVariable(self, name, v_type, coefficient=0.0, interval=1, lb=0.0, ub=1000000):
         numVars = 0
-        for i in range(self.currentDay, self.finalDay, interval):
+        for i in range(self.currentDay, self.finalDay+1, interval):
             v = Variable()
             v.name = name + str(i)
             v.col = self.numCols
@@ -130,7 +130,7 @@ class RobustSolver:
             if r != 0:
                 mind.append(r.name)
                 mval.append(1.0)
-            elif (t-1) > 0:
+            elif (t-1) >= 0:
                 rhs -= self.repositions[t-1]
 
             self.createConstraint(mind,mval,"E",rhs,"stock_flow" + str(t))
@@ -161,7 +161,7 @@ class RobustSolver:
 
     def solve(self, day, maxIterations=1):
         self.currentDay = day
-        self.finalDay = self.currentDay + params.horizon
+        self.finalDay = params.initialDay + params.horizon  # self.currentDay + params.horizon
 
         # begin the iterative procedure
         iterations = 0
@@ -172,7 +172,7 @@ class RobustSolver:
                 self.createLp()
 
                 # write the lp
-                self.lp.write(".\\..\\lps\\robusto_day" + str(self.currentDay) + "_iter" + str(iterations) + ".lp")
+                # self.lp.write(".\\..\\lps\\robusto_day" + str(self.currentDay) + "_iter" + str(iterations) + ".lp")
 
                 # solve the model
                 self.lp.solve()
