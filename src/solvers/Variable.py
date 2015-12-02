@@ -6,12 +6,14 @@ class Variable:
     v_stock = 4
     v_yminus = 5
     v_yplus = 6
-    v_error = 7
+    v_zs = 7
+    v_z = 8
+    v_error = 9
 
     def __init__(self):
         self.name = ""
         self.col = 0
         self.solutionVal = 0
         self.instant = 0
-        self.period = 0
+        self.scenario = 0
         self.type = Variable.v_error

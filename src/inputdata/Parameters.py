@@ -10,14 +10,15 @@ class Parameters:
     unitCost = 40  # production cost per product unit (same for al days)
 
     # other stuff
-    repositionInterval = 1
+    numScenarios = 100 # number of different demand scenarios to be considered on each robust optimization day
+    repositionInterval = 5
     robustInterval = 7
     currentUncertainty = 0.05
     currentRobustness = 0
 
-    # Scenario data
-    uncertainties = [0.05, 0.1, 0.15, 0.2, 0.25]
-    robustness = [0.5, 1, 1.5, 2, 2.5, 3]
+    # Experiments data
+    uncertainties = [0.2]
+    robustness = [1]
 
 
 

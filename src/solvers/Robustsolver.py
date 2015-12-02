@@ -2,6 +2,7 @@ import cplex
 import numpy as np
 from Variable import Variable
 from src.inputdata.Parameters import Parameters as params
+from src.inputdata.Scenario import Scenario
 from src.inputdata.ProblemData import ProblemData as pdata
 from src.solutiondata.ProblemSolution import ProblemSolution
 
@@ -13,15 +14,22 @@ from src.solutiondata.ProblemSolution import ProblemSolution
 class RobustSolver:
     def __init__(self, pData):
         self.pData = pData
+        self.scenarios = []
         self.currentDay = params.initialDay
         self.finalDay = self.currentDay + params.horizon
         self.repositions = [0 for i in range(0, len(pData.demandDataList))]  # the amounts repositioned to stock for each day
         self.initialStock = [0 for i in range(0, len(pData.demandDataList))]  # the initial stock at each iteration
-        self.initialStock[params.initialDay] = pData.getInitialStock()
         self.lp = 0
         self.variables = {}
         self.numCols = 0
         self.problemSolution = 0
+
+    def createScenarios(self):
+        self.scenarios = []
+        cont = 0
+        for s in range(params.numScenarios):
+            self.scenarios.append(Scenario(self.pData, self.currentDay, cont))
+            cont += 1
 
     # Creates the linear program
     def createModel(self):
@@ -32,55 +40,108 @@ class RobustSolver:
     #region Variable Creation
     def createVariables(self):
         numVars = 0
-        numVars += self.createDemandVariable()
         numVars += self.createRepositionVariable()
-        numVars += self.createTimeIndexedVariable("f", Variable.v_fault, -params.productAbscenceCost)
-        numVars += self.createTimeIndexedVariable("s", Variable.v_stock, -params.unitStockageCost)
-
-    def createDemandVariable(self):
-        numVars = 0
-        for i in range(self.currentDay, self.finalDay):
-            v = Variable()
-            v.name = "d" + str(i)
-            v.col = self.numCols
-            v.instant = i
-            v.type = Variable.v_demand
-            demand = self.pData.demandDataList[i].forecastDemand
-            self.variables[v.name] = v
-            self.lp.variables.add(obj=[params.unitPrice], lb=[demand], ub=[demand], names=[v.name])
-            self.numCols += 1
-            numVars += 1
-        return numVars
+        numVars += self.createFVariable()
+        numVars += self.createStockVariable()
+        numVars += self.createZSVariable()
+        numVars += self.createZVariable()
 
     def createRepositionVariable(self):
         numVars = 0
         repositionDays = [rDay for rDay in self.pData.repositionDays if rDay >= self.currentDay and rDay < self.finalDay]
 
+        # get the maximum forecast for using it as upper bound for r variable
+        maxDemand = max(s.maxForecast for s in self.scenarios)
+
+        # The reposition variable remains only for each t in the current planning horizon
         for i in repositionDays:
             v = Variable()
-            v.name = "r" + str(i)
+            v.type = Variable.v_reposition
+            v.name = "r_" + str(i)
             v.col = self.numCols
             v.instant = i
-            v.type = Variable.v_reposition
-            maxReposition = self.pData.maxDemandForecast
             self.variables[v.name] = v
-            self.lp.variables.add(obj=[-params.unitCost], ub=[maxReposition], names=[v.name])
+            self.lp.variables.add(ub=[maxDemand], names=[v.name])
             self.numCols += 1
             numVars += 1
+
         return numVars
 
-    def createTimeIndexedVariable(self, name, v_type, coefficient=0.0, interval=1, lb=0.0, ub=1000000):
+    def createFVariable(self):
         numVars = 0
-        for i in range(self.currentDay, self.finalDay+1, interval):
+
+        # the f variables are for each scenario and for each t of current horizon
+        for s in range(len(self.scenarios)):
+            scenario = self.scenarios[s]
+            for t in range(self.currentDay, self.finalDay+1):
+                # create the variable
+                v = Variable()
+                v.type = Variable.v_fault
+                v.name = "f_" + scenario.id + "_" + str(t)
+                v.col = self.numCols
+                v.instant = t
+                v.scenario = scenario.id
+                self.variables[v.name] = v
+                self.lp.variables.add(names=[v.name])
+                self.numCols += 1
+                numVars += 1
+
+        return numVars
+
+    def createStockVariable(self):
+        numVars = 0
+
+        # the s variables are for each scenario and for each t of current horizon
+        for s in range(len(self.scenarios)):
+            scenario = self.scenarios[s]
+            for t in range(self.currentDay, self.finalDay+1):
+                # create the variable
+                v = Variable()
+                v.type = Variable.v_stock
+                v.name = "s_" + scenario.id + "_" + str(t)
+                v.col = self.numCols
+                v.instant = t
+                v.scenario = scenario.id
+                self.variables[v.name] = v
+                self.lp.variables.add(names=[v.name])
+                self.numCols += 1
+                numVars += 1
+
+        return numVars
+
+    def createZSVariable(self):
+        numVars = 0
+        # the z variable is for each scenario
+        for s in range(len(self.scenarios)):
+            scenario = self.scenarios[s]
+
+            # create the variable
             v = Variable()
-            v.name = name + str(i)
+            v.type = Variable.v_zs
+            v.name = "zs_" + scenario.id
             v.col = self.numCols
-            v.instant = i
-            v.type = v_type
+            v.scenario = scenario.id
             self.variables[v.name] = v
-            self.lp.variables.add(obj=[coefficient], lb=[lb], ub=[ub], names=[v.name])
+            self.lp.variables.add(names=[v.name])
             self.numCols += 1
             numVars += 1
+
+        return numVars
+
+    def createZVariable(self):
+        numVars = 0
+
+        # there is only one z variable in the model
+        # create the variable
+        v = Variable()
+        v.type = Variable.v_z
+        v.name = "z"
+        v.col = self.numCols
+        self.variables[v.name] = v
+        self.lp.variables.add(obj=[1.0], names=[v.name])
+        self.numCols += 1
+        numVars += 1
+
         return numVars
 
     def getVariable(self, vname):
@@ -91,49 +152,133 @@ class RobustSolver:
 
     #region Constraint Creation
     def createConstraints(self):
-        numConst = 0;
+        numConst = 0
         numConst += self.createInitialStockConstraint()
         numConst += self.createStockFlowConstraint()
+        numConst += self.createFOScenarioConstraint()
+        numConst += self.createRobustConstraint()
+
+    def computeInitialStock(self):
+        t = self.currentDay
+        if t == params.initialDay:
+            self.initialStock[t] = self.pData.getInitialStock()
+        else:
+            self.initialStock[t] = self.initialStock[t-1] - self.pData.demandDataList[t-1].demand
+            if t-2 > 0:
+                self.initialStock[t] += self.repositions[t-2]
+
+        self.initialStock[t] = max(0, self.initialStock[0])
 
     def createInitialStockConstraint(self):
-        v = self.variables["s" + str(self.currentDay)]
-        mind = [v.col]
-        mval = [1.0]
-        self.createConstraint(mind,mval,"E",self.initialStock[self.currentDay],"initial_stock")
-        return 1
+        numCons = 0
+
+        # get the initial stock value for the current day, which will be the same for all scenarios.
+        self.computeInitialStock()
+
+        # this constraint is current day, for each scenario
+        for scenario in self.scenarios:
+            # get the initial stock variable for current day and scenario
+            v = self.variables["s_" + scenario.id + "_"  + str(self.currentDay)]
+            mind = [v.col]
+            mval = [1.0]
+            self.createConstraint(mind,mval,"E",self.initialStock[self.currentDay],"initial_stock_" + scenario.id)
+            numCons += 1
+
+        return numCons
 
     def createStockFlowConstraint(self):
         numCons = 0
-        # s_{t} + r_{t-1} + f_{t} - s_{t+1} = d_{t}
-        for t in range(self.currentDay, self.finalDay):
-            mind =[]
-            mval =[]
-            rhs = 0.0
+        # s_{s,t} + r_{t-1} + f_{s,t} - s_{s,t+1} = d_{s,t}
 
-            s = self.getVariable("s" + str(t))
-            s1 = self.getVariable("s" + str(t+1))
-            d = self.getVariable("d" + str(t))
-            f = self.getVariable("f" + str(t))
-            r = self.getVariable("r" + str(t-1))
+        # this constraint is for each scenatio and each t in the horizon
+        for scenario in self.scenarios:
+            for t in range(self.currentDay, self.finalDay):
+                # get the associated demand
+                rhs = scenario.forecast[t]
 
-            mind.append(s.name)
-            mval.append(1.0)
-            mind.append(f.name)
-            mval.append(1.0)
-            mind.append(d.name)
-            mval.append(-1.0)
+                mind = []
+                mval = []
 
-            if s1 != 0:
-                mind.append(s1.name)
+                s = self.getVariable("s_" + scenario.id + "_" + str(t))
+                s1 = self.getVariable("s_" + scenario.id + "_" + str(t+1))
+                f = self.getVariable("f_" + scenario.id + "_" + str(t))
+                r = self.getVariable("r_" + str(t-1))
+
+                mind.append(s.col)
+                mval.append(1.0)
+                mind.append(f.col)
+                mval.append(1.0)
+                mind.append(s1.col)
                 mval.append(-1.0)
 
-            if r != 0:
-                mind.append(r.name)
-                mval.append(1.0)
-            elif (t-1) >= 0:
-                rhs -= self.repositions[t-1]
+                if r != 0:
+                    mind.append(r.col)
+                    mval.append(1.0)
+                elif (t-1) >= 0:
+                    rhs -= self.repositions[t-1]
 
-            self.createConstraint(mind,mval,"E",rhs,"stock_flow" + str(t))
+                self.createConstraint(mind,mval,"E",rhs,"stock_flow_" + scenario.id + "_" + str(t))
+                numCons += 1
+
+        return numCons
+
+    def createFOScenarioConstraint(self):
+        numCons = 0
+
+        # this constraint is for each scenario
+        for scenario in self.scenarios:
+            mind = []
+            mval = []
+            rhs = 0
+
+            # get the zs variable
+            zs = self.getVariable("zs_" + scenario.id)
+            mind.append(zs.col)
+            mval.append(1.0)
+
+            # get other variables, for each t
+            for t in range(self.currentDay, self.finalDay):
+                s = self.getVariable("s_" + scenario.id + "_" + str(t))
+                r = self.getVariable("r_" + str(t))
+                f = self.getVariable("f_" + scenario.id + "_" + str(t))
+
+                mind.append(s.col)
+                mval.append(params.unitStockageCost)
+
+                if r != 0:
+                    mind.append(r.col)
+                    mval.append(params.unitCost)
+
+                mind.append(f.col)
+                mval.append(params.productAbscenceCost)
+
+                rhs += scenario.forecast[t]
+
+            # create the constraint
+            self.createConstraint(mind,mval,"L",rhs,"foValue_" + scenario.id)
+            numCons += 1
+
+        return numCons
+
+    def createRobustConstraint(self):
+        numCons = 0
+
+        z = self.getVariable("z")
+
+        # this constraint is for each scenario
+        for scenario in self.scenarios:
+            mind = []
+            mval = []
+
+            mind.append(z.col)
+            mval.append(1.0)
+
+            # get the zs variable
+            zs = self.getVariable("zs_" + scenario.id)
+            mind.append(zs.name)
+            mval.append(-1.0)
+
+            self.createConstraint(mind,mval,"L",0.0,"robust_" + scenario.id)
             numCons += 1
 
         return numCons
@@ -159,53 +304,39 @@ class RobustSolver:
         self.lp.set_results_stream(None)
         self.createModel()
 
-    def solve(self, day, maxIterations=1):
+    def solve(self, day):
         self.currentDay = day
-        self.finalDay = params.initialDay + params.horizon  # self.currentDay + params.horizon
+        self.finalDay = self.currentDay + params.horizon
 
-        # begin the iterative procedure
-        iterations = 0
-        minVal = 100000000000000
+        # create the list of scenarios for the current day
+        self.createScenarios()
+
         try:
-            while iterations < maxIterations:
-                # create lp
-                self.createLp()
+            # create the lp model
+            self.createLp()
 
-                # write the lp
-                # self.lp.write(".\\..\\lps\\robusto_day" + str(self.currentDay) + "_iter" + str(iterations) + ".lp")
+            # write the lp
+            self.lp.write(".\\..\\lps\\robusto_dia" + str(day) + ".lp")
 
-                # solve the model
-                self.lp.solve()
+            # solve the model
+            self.lp.solve()
 
-                # process solution, get stock reposition for current day and stock for next planning day
-                solution = self.lp.solution
-                objValue = solution.get_objective_value()
-                x = solution.get_values()
+            # process problem solution
+            solution = self.lp.solution
+            x = solution.get_values()
 
-                # check if we need to update the current "worst" solution
-                if objValue < minVal:
-                    # update worst solution value
-                    minVal = objValue
+            for k,v in self.variables.iteritems():
+                # load the reposition and stock quantity
+                col = v.col
+                t = v.instant
+                solVal = x[col]
 
-                    # process solution
-                    for k,v in self.variables.iteritems():
-                        # load the reposition and stock quantity
-                        col = v.col
-                        t = v.instant
-                        solVal = x[col]
+                if v.type == Variable.v_reposition:
+                    self.repositions[t] = solVal
 
-                        if v.type == Variable.v_reposition:
-                            self.repositions[t] = solVal
-                        elif v.type == Variable.v_stock:
-                            self.initialStock[t] = solVal
-
-                    # store solution
-                    self.problemSolution = ProblemSolution(self.currentDay,
-                                                           self.repositions[self.currentDay], objValue)
-
-                # recalculate robust demand for next iteration
-                self.pData.calculateDemandForecast(self.currentDay)
-                iterations += 1
+            # save a problem solution with the above data
+            self.problemSolution = ProblemSolution(self.currentDay,
+                                                   self.repositions[self.currentDay])
 
         except:
             print "Error on t" + str(self.currentDay)

@@ -36,25 +36,29 @@ SOBRE O HORIZONTE DE PLANEJAMENTO
     - ...
 
 TODO
-General:
-- Colocar o random seed no main
+- O solver deve continuar rodando para cada dia do horizonte de planejamento.
+- Para cada dia de planejamento serão considerados |horizonte| dias para a frente.
+- Os intervalos de robustez por enquanto vão se deslocar a cada iteração, i.e. serão recalculados.
+- A cada iteração devem ser gerados um conjunto de scenarios novos
+- O que é gerar um cenário:
+    - Gerar um cenário consiste em computar os Y para cada intervalo de robustes.
+    - Usando esse Y será calculada o demand forecast desse scenário
+    - Isto significa que cada cenário vai ter o seu proprio Y e o seu proprio forecast de demanda.
+- Deve ser criado um parâmetro para o número de cenários que serão gerados a cada iteração nos testes.
+- Será criado um conjunto de cenários. A cada iteração esse conjunto será criado novamente.
+- As variaveis existentes hoje estarão indexadas por cenário, exceto a variável R
+- Devem ser criadas duas novas variaveis Zs e Z.
+- Criar novas restrições Zs > FOs  e z <= Zs...
+- Maximizar a variavel z
 
-ProblemData:
-- Criar dataset com todos os dias (ok)
-- Criar metodo no problem data para gerar os valores de y separadamente.(ok)
-    - Os valores de Y debem somar \Gamma para cada intervalo robusto. (ok)
-- Parametrizar o erro do forecast da demanda.(ok)
-- Calcular dois valores de forecast de demanda: (ok)
-    - Usando os Y para o solver robusto (ok)
-    - Sem usar os Y para o solver deterministico. (ok)
+IMPLEMENTAÇÃO
+- Criar uma clase cenário (ok)
+    - essa classe vai ter dois vetores y[t] e forecast[t]
+- A primeira coisa que o solver robusto deve fazer no metodo solve é criar a lista de cenários
 
-Solvers
-- O problemdata deve ser gerenciado no main.py (não sempre)
-- Colocar no solver robusto a demanda como uma variavel e fixar os bounds dela na criação, usando o valor calculado para Y (ok)
-- O metodo solve de ambas clases deve receber o dia inicial como parametro. Esse método sólo ira rodar um dia (ok)
-- No caso do solver robusto, adicionar um parametro ao metodo solve, para controlar quantas rodadas devem ser feitas. Sempre retornar a pior. (ok)
-- O metodo solve dos solver deve retornar um ProblemSolution. Os problem solutions deben ser gerenciados no main.py (ok)
-- Implementar a politica de reposicionamente parametrizavel. Colocar um upper bound para essa variavel. (ok)
+
+Experimentos
+- Rodar para varios erros, robustez, numero de cenários, politicas de reposição
 
 Output
 - Escolher uma biblioteca de javascript para visualização de dados.

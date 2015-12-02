@@ -12,8 +12,6 @@ class ProblemData:
     def __init__(self):
         self.demandDataList = []
         self.maxDemand = 0.0
-        self.maxDemandForecast = 0.0
-        self.y = []
         self.repositionDays = []
         self.readDatafile()
 
@@ -25,6 +23,7 @@ class ProblemData:
             for r in reader:
                 date = datetime.strptime(r["Date"], "%d/%m/%Y")
                 demand = float(r["Sales"])
+                self.maxDemand = max(self.maxDemand, demand)
                 self.demandDataList.append(DemandData(date, demand))
 
         # Sort the data by date
@@ -40,50 +39,6 @@ class ProblemData:
             totalStock += self.demandDataList[i].demand
 
         return totalStock
-
-    def calculateY(self):
-        self.y = []
-
-        # For each day of each period, calculate y
-        # The sum of all y for a given period must be equal to the pessimism (robustness) parameter
-        totalPeriods = int(math.ceil(float(params.horizon) / params.robustInterval))
-
-        for p in range(totalPeriods):
-            sum = 0
-            for d in range(0,params.robustInterval):
-                currentY = np.random.uniform(-1,1)
-                self.y.append(currentY)
-                sum += math.fabs(currentY)
-
-            for d in range(0, params.robustInterval):
-                day = (params.robustInterval * p) + d
-                self.y[day] *= (params.currentRobustness / sum)
-
-    # Calculates the 'fake' forecast demand for all days
-    # based on an initial day given real demand
-    def calculateDemandForecast(self, t0):
-        self.calculateY()
-        yIdx = 0
-        initialDemandData = self.demandDataList[t0]
-        for t in range(t0, t0 + params.horizon):
-            demandData = self.demandDataList[t]
-            uncertainty = float(params.currentUncertainty * math.sqrt(t-t0))
-
-            # maximum deviation
-            deviation = max(0, demandData.demand * uncertainty)
-            demandData.deviation = deviation
-
-            # additional error
-            error = 0
-            #error = np.random.normal(0, initialDemandData.demand / 10)
-
-            # robust demand
-            demandData.forecastDemand = max(0, demandData.demand + (deviation * self.y[yIdx]) + error)
-
-            self.maxDemandForecast = max(self.maxDemandForecast, demandData.forecastDemand)
-            self.maxDemand = max(self.maxDemand, demandData.demand)
-
-            yIdx += 1
 
     def getPessimism(self,period):
         return params.defaultPessimism

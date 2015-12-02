@@ -17,7 +17,6 @@ class DeterministicSolver:
         self.finalDay = self.currentDay + params.horizon
         self.repositions = [0 for i in range(0, len(pData.demandDataList))]  # the amounts repositioned to stock for each day
         self.initialStock = [0 for i in range(0, len(pData.demandDataList))]  # the initial stock at each iteration
-        self.initialStock[params.initialDay] = pData.getInitialStock()
         self.lp = 0
         self.variables = {}
         self.numCols = 0
@@ -96,7 +95,21 @@ class DeterministicSolver:
         numConst += self.createInitialStockConstraint()
         numConst += self.createStockFlowConstraint()
 
+    def computeInitialStock(self):
+        t = self.currentDay
+        if t == params.initialDay:
+            self.initialStock[t] = self.pData.getInitialStock()
+        else:
+            self.initialStock[t] = self.initialStock[t-1] - self.pData.demandDataList[t-1].demand
+            if t-2 > 0:
+                self.initialStock[t] += self.repositions[t-2]
+
+        self.initialStock[t] = max(0, self.initialStock[0])
+
     def createInitialStockConstraint(self):
+        # get the initial stock value for the current day, which will be the same for all scenarios.
+        self.computeInitialStock()
+
         v = self.variables["s" + str(self.currentDay)]
         mind = [v.col]
         mval = [1.0]
@@ -162,21 +175,20 @@ class DeterministicSolver:
 
     def solve(self, day=0):
         self.currentDay = day
-        self.finalDay = params.initialDay + params.horizon  # self.currentDay + params.horizon
+        self.finalDay = self.currentDay + params.horizon
 
         try:
             # create lp
             self.createLp()
 
             # write the lp
-            # self.lp.write(".\\..\\lps\\deterministico_dia" + str(day) + ".lp")
+            self.lp.write(".\\..\\lps\\deterministico_dia" + str(day) + ".lp")
 
             # solve the model
             self.lp.solve()
 
-            # process solution, get stock reposition for current day and stock for next planning day
+            # process solution, get stock reposition for current day
             solution = self.lp.solution
-            objValue = solution.get_objective_value()
             x = solution.get_values()
 
             for k,v in self.variables.iteritems():
@@ -187,11 +199,9 @@ class DeterministicSolver:
 
                 if v.type == Variable.v_reposition:
                     self.repositions[t] = solVal
-                elif v.type == Variable.v_stock:
-                    self.initialStock[t] = solVal
 
             self.problemSolution = ProblemSolution(self.currentDay,
-                                                   self.repositions[self.currentDay], objValue)
+                                                   self.repositions[self.currentDay])
 
         except:
             print "Error on t" + str(self.currentDay)
