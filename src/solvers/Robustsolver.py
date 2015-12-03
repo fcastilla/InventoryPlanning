@@ -61,7 +61,7 @@ class RobustSolver:
             v.col = self.numCols
             v.instant = i
             self.variables[v.name] = v
-            self.lp.variables.add(ub=[maxDemand], names=[v.name])
+            self.lp.variables.add(names=[v.name])
             self.numCols += 1
             numVars += 1
 
@@ -167,7 +167,7 @@ class RobustSolver:
             if t-2 > 0:
                 self.initialStock[t] += self.repositions[t-2]
 
-        self.initialStock[t] = max(0, self.initialStock[0])
+        self.initialStock[t] = max(0, self.initialStock[t])
 
     def createInitialStockConstraint(self):
         numCons = 0
@@ -325,14 +325,10 @@ class RobustSolver:
             solution = self.lp.solution
             x = solution.get_values()
 
-            for k,v in self.variables.iteritems():
-                # load the reposition and stock quantity
-                col = v.col
-                t = v.instant
-                solVal = x[col]
-
-                if v.type == Variable.v_reposition:
-                    self.repositions[t] = solVal
+            # save the obtained reposition for the current day, if any
+            v = self.getVariable("r_" + str(self.currentDay))
+            if v != 0:
+                self.repositions[self.currentDay] = x[v.col]
 
             # save a problem solution with the above data
             self.problemSolution = ProblemSolution(self.currentDay,

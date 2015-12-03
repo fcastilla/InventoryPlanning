@@ -32,22 +32,19 @@ class Scenario:
 
     def computeForecast(self):
         t0 = self.currentDay
-        initialDemandData = self.pData.demandDataList[t0]
         for t in range(t0, t0 + params.horizon):
-            demandData = self.pData.demandDataList[t]
-            uncertainty = float(params.currentUncertainty * math.sqrt(t-t0))
+            # get demand forecast
+            demandForecast = self.pData.getForecast(t0,t)
 
-            # maximum deviation
-            deviation = max(0, demandData.demand * uncertainty)
+            # get error interval
+            errorInterval = self.pData.getCurrentUncertaintyInterval(t0, t)
 
-            # additional error
-            error = 0
-            #error = np.random.normal(0, initialDemandData.demand / 10)
+            # compute deviation
+            deviation = demandForecast * errorInterval
 
             # forecast for t on this scenario
-            self.forecast[t] = max(0, demandData.demand + (deviation * self.y[t]) + error)
+            self.forecast[t] = max(0, demandForecast + (deviation * self.y[t]))
             self.maxForecast = max(self.maxForecast, self.forecast[t])
-
 
     def generate(self):
         # compute a y array for the associated day for the current scenario

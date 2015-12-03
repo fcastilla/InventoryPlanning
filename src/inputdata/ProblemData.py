@@ -1,7 +1,6 @@
 import csv
 import math
 import numpy as np
-import random
 from Parameters import Parameters as params
 from DemandData import DemandData
 from datetime import datetime
@@ -14,6 +13,7 @@ class ProblemData:
         self.maxDemand = 0.0
         self.repositionDays = []
         self.readDatafile()
+        self.forecast = [[0 for i in range(len(self.demandDataList))] for j in range(len(self.demandDataList))]
 
     # Reads data file
     def readDatafile(self):
@@ -40,9 +40,6 @@ class ProblemData:
 
         return totalStock
 
-    def getPessimism(self,period):
-        return params.defaultPessimism
-
     def setRepositionDays(self, days=[]):
         if len(days) > 0:
             self.repositionDays = days
@@ -50,3 +47,31 @@ class ProblemData:
 
         for i in range(params.initialDay, len(self.demandDataList), params.repositionInterval):
             self.repositionDays.append(i)
+
+    def computeForecast(self, t0):
+        t = t0
+        for d in self.demandDataList[t0:]:
+            # get the real demand
+            realDemand = d.demand
+
+            # get error interval
+            uncertainty = self.getCurrentUncertaintyInterval(t0,t)
+
+            # raffle a demand error inside the error interval
+            error = 0
+            if uncertainty > 0:
+                error = np.random.normal(0, uncertainty)
+
+            # compute the demand forecast for t on this iteration (day)
+            fDemand = realDemand + error
+            self.forecast[t0][t] = fDemand
+
+            t += 1
+
+    def getForecast(self, t0, t):
+        return self.forecast[t0][t]
+
+    def getCurrentUncertaintyInterval(self, t0, t):
+        return float(params.currentUncertainty * math.sqrt(t-t0))
+
+

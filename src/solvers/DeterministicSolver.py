@@ -39,13 +39,14 @@ class DeterministicSolver:
 
     def createDemandVariable(self):
         numVars = 0
-        for i in range(self.currentDay, self.finalDay):
+        t0 = self.currentDay
+        for t in range(self.currentDay, self.finalDay):
             v = Variable()
-            v.name = "d" + str(i)
+            v.name = "d" + str(t)
             v.col = self.numCols
-            v.instant = i
+            v.instant = t
             v.type = Variable.v_demand
-            demand = self.pData.demandDataList[i].demand
+            demand = self.pData.getForecast(t0, t)
             self.variables[v.name] = v
             self.lp.variables.add(obj=[params.unitPrice], lb=[demand], ub=[demand], names=[v.name])
             self.numCols += 1
@@ -64,7 +65,7 @@ class DeterministicSolver:
             v.type = Variable.v_reposition
             maxReposition = self.pData.maxDemand
             self.variables[v.name] = v
-            self.lp.variables.add(obj=[-params.unitCost], ub=[maxReposition], names=[v.name])
+            self.lp.variables.add(obj=[-params.unitCost], names=[v.name])
             self.numCols += 1
             numVars += 1
         return numVars
@@ -104,7 +105,7 @@ class DeterministicSolver:
             if t-2 > 0:
                 self.initialStock[t] += self.repositions[t-2]
 
-        self.initialStock[t] = max(0, self.initialStock[0])
+        self.initialStock[t] = max(0, self.initialStock[t])
 
     def createInitialStockConstraint(self):
         # get the initial stock value for the current day, which will be the same for all scenarios.
@@ -191,14 +192,10 @@ class DeterministicSolver:
             solution = self.lp.solution
             x = solution.get_values()
 
-            for k,v in self.variables.iteritems():
-                # load the reposition and stock quantity
-                col = v.col
-                t = v.instant
-                solVal = x[col]
-
-                if v.type == Variable.v_reposition:
-                    self.repositions[t] = solVal
+            # save the obtained reposition for the current day, if any
+            v = self.getVariable("r" + str(self.currentDay))
+            if v != 0:
+                self.repositions[self.currentDay] = x[v.col]
 
             self.problemSolution = ProblemSolution(self.currentDay,
                                                    self.repositions[self.currentDay])
