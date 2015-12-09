@@ -50,6 +50,9 @@ TODO
 - Devem ser criadas duas novas variaveis Zs e Z.
 - Criar novas restrições Zs > FOs  e z <= Zs...
 - Maximizar a variavel z
+- Criar ZsP e ZsN
+- Criar ZP e ZN
+- Atualizar restricoes
 
 IMPLEMENTAÇÃO
 - Criar uma clase cenário (ok)
@@ -77,8 +80,11 @@ NOTAS
 
 
 
-	
-	
+Reposicao: lead time e o intervalo
+Para cada erro variacao do gama
+Numero de cen[arios
+
+
 
 	
 

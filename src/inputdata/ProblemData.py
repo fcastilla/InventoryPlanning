@@ -63,7 +63,7 @@ class ProblemData:
                 error = np.random.normal(0, uncertainty)
 
             # compute the demand forecast for t on this iteration (day)
-            fDemand = realDemand + error
+            fDemand = realDemand * (1 + (error/10))
             self.forecast[t0][t] = fDemand
 
             t += 1

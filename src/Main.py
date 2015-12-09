@@ -4,7 +4,6 @@ import numpy as np
 
 from src.inputdata.Parameters import Parameters as params
 from src.inputdata.ProblemData import ProblemData
-from src.inputdata.Scenario import Scenario
 from src.solvers.DeterministicSolver import DeterministicSolver
 from src.solvers.RobustSolver import RobustSolver
 
@@ -43,6 +42,9 @@ class InventoryPlanner:
         for t in range(self.initialDay, self.finalDay):
             # compute forecast for current day
             self.data.computeForecast(t)
+
+            # print the demand forecast for the current day
+            self.saveDemandData(t)
 
             print "Running deterministic solver for day " + str(t)
             dRepositions[t] = dSolver.solve(t).reposition
@@ -110,6 +112,27 @@ class InventoryPlanner:
         f.write(line)
         f.close()
 
+    def saveDemandData(self, day):
+        fileName = ".\\..\\output\\Demand_day" + str(day) + ".csv"
+        f = open(fileName,"a")
+        line = "Dia;Superior;Inferior;Forecast;Uncertainty;Real\n"
+        f.write(line)
+        for t in range(day, day + params.horizon):
+            demand = self.data.demandDataList[t].demand
+            uncertainty = self.data.getCurrentUncertaintyInterval(day,t)
+            forecast = self.data.getForecast(day,t)
+            errorInterval = self.data.getCurrentUncertaintyInterval(day, t)
+            intervals = max(0, forecast * (1 + (errorInterval/5)))
+            intervali = max(0, forecast * (1 - (errorInterval/5)))
+            line = str(t) + ";"
+            line += '{:.2f}'.format(intervals).replace(".",",") + ";"
+            line += '{:.2f}'.format(intervali).replace(".",",") + ";"
+            line += '{:.2f}'.format(forecast).replace(".",",") + ";"
+            line += '{:.2f}'.format(uncertainty).replace(".",",") + ";"
+            line += '{:.2f}'.format(demand).replace(".",",")
+            line += "\n"
+            f.write(line)
+        f.close()
 
 planner = InventoryPlanner()
 planner.executePlanning()

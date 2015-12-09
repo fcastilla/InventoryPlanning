@@ -6,9 +6,11 @@ class Variable:
     v_stock = 4
     v_yminus = 5
     v_yplus = 6
-    v_zs = 7
-    v_z = 8
-    v_error = 9
+    v_zsp = 7
+    v_zsn = 8
+    v_zp = 9
+    v_zn = 10
+    v_error = 11
 
     def __init__(self):
         self.name = ""

@@ -26,10 +26,8 @@ class RobustSolver:
 
     def createScenarios(self):
         self.scenarios = []
-        cont = 0
         for s in range(params.numScenarios):
-            self.scenarios.append(Scenario(self.pData, self.currentDay, cont))
-            cont += 1
+            self.scenarios.append(Scenario(self.pData, self.currentDay, s))
 
     # Creates the linear program
     def createModel(self):
@@ -43,8 +41,8 @@ class RobustSolver:
         numVars += self.createRepositionVariable()
         numVars += self.createFVariable()
         numVars += self.createStockVariable()
-        numVars += self.createZSVariable()
-        numVars += self.createZVariable()
+        numVars += self.createZSVariables()
+        numVars += self.createZVariables()
 
     def createRepositionVariable(self):
         numVars = 0
@@ -71,9 +69,8 @@ class RobustSolver:
         numVars = 0
 
         # the f variables are for each scenario and for each t of current horizon
-        for s in range(len(self.scenarios)):
-            scenario = self.scenarios[s]
-            for t in range(self.currentDay, self.finalDay+1):
+        for scenario in self.scenarios:
+            for t in range(self.currentDay, self.finalDay):
                 # create the variable
                 v = Variable()
                 v.type = Variable.v_fault
@@ -92,9 +89,8 @@ class RobustSolver:
         numVars = 0
 
         # the s variables are for each scenario and for each t of current horizon
-        for s in range(len(self.scenarios)):
-            scenario = self.scenarios[s]
-            for t in range(self.currentDay, self.finalDay+1):
+        for scenario in self.scenarios:
+            for t in range(self.currentDay, self.finalDay):
                 # create the variable
                 v = Variable()
                 v.type = Variable.v_stock
@@ -109,36 +105,55 @@ class RobustSolver:
 
         return numVars
 
-    def createZSVariable(self):
+    def createZSVariables(self):
         numVars = 0
         # the z variable is for each scenario
-        for s in range(len(self.scenarios)):
-            scenario = self.scenarios[s]
+        for scenario in self.scenarios:
 
-            # create the variable
-            v = Variable()
-            v.type = Variable.v_zs
-            v.name = "zs_" + scenario.id
-            v.col = self.numCols
-            v.scenario = scenario.id
-            self.variables[v.name] = v
-            self.lp.variables.add(names=[v.name])
+            # create zsp variable
+            v1 = Variable()
+            v1.type = Variable.v_zsp
+            v1.name = "zsp_" + scenario.id
+            v1.col = self.numCols
+            v1.scenario = scenario.id
+            self.variables[v1.name] = v1
+            self.lp.variables.add(names=[v1.name])
+            self.numCols += 1
+            numVars += 1
+
+            #create zsn variable
+            v2 = Variable()
+            v2.type = Variable.v_zsn
+            v2.name = "zsn_" + scenario.id
+            v2.col = self.numCols
+            v2.scenario = scenario.id
+            self.variables[v2.name] = v2
+            self.lp.variables.add(names=[v2.name])
             self.numCols += 1
             numVars += 1
 
         return numVars
 
-    def createZVariable(self):
+    def createZVariables(self):
         numVars = 0
 
-        # there is only one z variable in the model
-        # create the variable
-        v = Variable()
-        v.type = Variable.v_z
-        v.name = "z"
-        v.col = self.numCols
-        self.variables[v.name] = v
-        self.lp.variables.add(obj=[1.0], names=[v.name])
+        # create the zp variable
+        v1 = Variable()
+        v1.type = Variable.v_zp
+        v1.name = "zp"
+        v1.col = self.numCols
+        self.variables[v1.name] = v1
+        self.lp.variables.add(obj=[1.0], names=[v1.name])
+        self.numCols += 1
+        numVars += 1
+
+        # create the zn variable
+        v2 = Variable()
+        v2.type = Variable.v_zn
+        v2.name = "zn"
+        v2.col = self.numCols
+        self.variables[v2.name] = v2
+        self.lp.variables.add(obj=[-1.0], names=[v2.name])
         self.numCols += 1
         numVars += 1
 
@@ -208,8 +223,10 @@ class RobustSolver:
                 mval.append(1.0)
                 mind.append(f.col)
                 mval.append(1.0)
-                mind.append(s1.col)
-                mval.append(-1.0)
+
+                if s1 != 0:
+                    mind.append(s1.col)
+                    mval.append(-1.0)
 
                 if r != 0:
                     mind.append(r.col)
@@ -231,10 +248,15 @@ class RobustSolver:
             mval = []
             rhs = 0
 
-            # get the zs variable
-            zs = self.getVariable("zs_" + scenario.id)
-            mind.append(zs.col)
+            # get the zsp variable
+            zsp = self.getVariable("zsp_" + scenario.id)
+            mind.append(zsp.col)
             mval.append(1.0)
+
+            # get the zpn variable
+            zsn = self.getVariable("zsn_" + scenario.id)
+            mind.append(zsn.col)
+            mval.append(-1.0)
 
             # get other variables, for each t
             for t in range(self.currentDay, self.finalDay):
@@ -252,7 +274,7 @@ class RobustSolver:
                 mind.append(f.col)
                 mval.append(params.productAbscenceCost)
 
-                rhs += scenario.forecast[t]
+                rhs += (params.unitPrice * scenario.forecast[t])
 
             # create the constraint
             self.createConstraint(mind,mval,"L",rhs,"foValue_" + scenario.id)
@@ -263,20 +285,29 @@ class RobustSolver:
     def createRobustConstraint(self):
         numCons = 0
 
-        z = self.getVariable("z")
+        zp = self.getVariable("zp")
+        zn = self.getVariable("zn")
 
         # this constraint is for each scenario
         for scenario in self.scenarios:
             mind = []
             mval = []
 
-            mind.append(z.col)
+            mind.append(zp.col)
             mval.append(1.0)
 
-            # get the zs variable
-            zs = self.getVariable("zs_" + scenario.id)
-            mind.append(zs.name)
+            mind.append(zn.col)
             mval.append(-1.0)
+
+            # get the zsp variable
+            zsp = self.getVariable("zsp_" + scenario.id)
+            mind.append(zsp.col)
+            mval.append(-1.0)
+
+            # get the zsn variable
+            zsn = self.getVariable("zsn_" + scenario.id)
+            mind.append(zsn.col)
+            mval.append(1.0)
 
             self.createConstraint(mind,mval,"L",0.0,"robust_" + scenario.id)
             numCons += 1
@@ -325,10 +356,71 @@ class RobustSolver:
             solution = self.lp.solution
             x = solution.get_values()
 
+            # determinar qual foi o cenario restritivo
+            zp = self.getVariable("zp")
+            zn = self.getVariable("zn")
+
+            zpVal = x[zp.col]
+            znVal = x[zn.col]
+            zval = 0
+
+            if zpVal > 0:
+                vname = "zsp"
+                zval = zpVal
+                print vname + "_" + str(zval)
+            else:
+                vname = "zsn"
+                zval = znVal
+                print vname + "_" + str(zval)
+
+            mScenario = 0
+            for scenario in self.scenarios:
+                zvar = self.getVariable(vname + "_" + str(scenario.id))
+                if x[zvar.col] == zval:
+                    print vname + "_" + str(zvar.col) + "_" + str(x[zvar.col])
+                    mScenario = scenario
+                    break
+
             # save the obtained reposition for the current day, if any
-            v = self.getVariable("r_" + str(self.currentDay))
-            if v != 0:
-                self.repositions[self.currentDay] = x[v.col]
+            fileName = ".\\..\\output\\StockNReposition_day" + str(day) + ".csv"
+            f = open(fileName,"a")
+            line = "Dia;Scenario;Demand;Stock;Fault;Reposition\n"
+            f.write(line)
+            for t in range(self.currentDay, self.finalDay):
+                line = str(t) + ";" + str(mScenario.id) + ";"
+
+                # Demand
+                demand = mScenario.forecast[t]
+                line += '{:.2f}'.format(demand).replace(".",",") + ";"
+
+                # Stock
+                s = self.getVariable("s_" + str(mScenario.id) + "_" + str(t))
+                if s != 0:
+                    val = x[s.col]
+                    line += '{:.2f}'.format(val).replace(".",",") + ";"
+                else:
+                    line += "0;"
+
+                # Falta
+                fvar = self.getVariable("f_" + str(mScenario.id) + "_" + str(t))
+                if f != 0:
+                    val = x[fvar.col]
+                    line += '{:.2f}'.format(val).replace(".",",") + ";"
+                else:
+                    line += "0;"
+
+                # Repositioning
+                r = self.getVariable("r_" + str(t))
+                if r != 0:
+                    if t == self.currentDay:
+                        self.repositions[self.currentDay] = x[r.col]
+                    line += '{:.2f}'.format(x[r.col]).replace(".",",") + ";"
+                else:
+                    line += "0;"
+
+                line += "\n"
+                f.write(line)
+            f.close()
 
             # save a problem solution with the above data
             self.problemSolution = ProblemSolution(self.currentDay,

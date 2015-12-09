@@ -72,7 +72,7 @@ class DeterministicSolver:
 
     def createTimeIndexedVariable(self, name, v_type, coefficient=0.0, interval=1, lb=0.0, ub=1000000):
         numVars = 0
-        for i in range(self.currentDay, self.finalDay+1, interval):
+        for i in range(self.currentDay, self.finalDay, interval):
             v = Variable()
             v.name = name + str(i)
             v.col = self.numCols
