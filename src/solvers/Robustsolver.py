@@ -59,7 +59,7 @@ class RobustSolver:
             v.col = self.numCols
             v.instant = i
             self.variables[v.name] = v
-            self.lp.variables.add(names=[v.name])
+            self.lp.variables.add(ub=[100000000.0], names=[v.name])
             self.numCols += 1
             numVars += 1
 
@@ -179,8 +179,8 @@ class RobustSolver:
             self.initialStock[t] = self.pData.getInitialStock()
         else:
             self.initialStock[t] = self.initialStock[t-1] - self.pData.demandDataList[t-1].demand
-            if t-2 > 0:
-                self.initialStock[t] += self.repositions[t-2]
+            if t - params.leadTime > 0:
+                self.initialStock[t] += self.repositions[t-params.leadTime]
 
         self.initialStock[t] = max(0, self.initialStock[t])
 
@@ -207,7 +207,7 @@ class RobustSolver:
 
         # this constraint is for each scenatio and each t in the horizon
         for scenario in self.scenarios:
-            for t in range(self.currentDay, self.finalDay):
+            for t in range(self.currentDay, self.finalDay-1):
                 # get the associated demand
                 rhs = scenario.forecast[t]
 
@@ -217,7 +217,7 @@ class RobustSolver:
                 s = self.getVariable("s_" + scenario.id + "_" + str(t))
                 s1 = self.getVariable("s_" + scenario.id + "_" + str(t+1))
                 f = self.getVariable("f_" + scenario.id + "_" + str(t))
-                r = self.getVariable("r_" + str(t-1))
+                r = self.getVariable("r_" + str(t-params.leadTime+1))
 
                 mind.append(s.col)
                 mval.append(1.0)
@@ -231,8 +231,8 @@ class RobustSolver:
                 if r != 0:
                     mind.append(r.col)
                     mval.append(1.0)
-                elif (t-1) >= 0:
-                    rhs -= self.repositions[t-1]
+                elif (t-params.leadTime+1) >= 0:
+                    rhs -= self.repositions[t-params.leadTime+1]
 
                 self.createConstraint(mind,mval,"E",rhs,"stock_flow_" + scenario.id + "_" + str(t))
                 numCons += 1
@@ -277,7 +277,7 @@ class RobustSolver:
                 rhs += (params.unitPrice * scenario.forecast[t])
 
             # create the constraint
-            self.createConstraint(mind,mval,"L",rhs,"foValue_" + scenario.id)
+            self.createConstraint(mind,mval,"E",rhs,"foValue_" + scenario.id)
             numCons += 1
 
         return numCons
@@ -382,7 +382,8 @@ class RobustSolver:
                     break
 
             # save the obtained reposition for the current day, if any
-            fileName = ".\\..\\output\\StockNReposition_day" + str(day) + ".csv"
+            fileName = ".\\..\\output\\StockNReposition_u" + str(params.currentUncertainty) + "_r" +\
+                       str(params.currentRobustness) + "_day" + str(day) + ".csv"
             f = open(fileName,"a")
             line = "Dia;Scenario;Demand;Stock;Fault;Reposition\n"
             f.write(line)

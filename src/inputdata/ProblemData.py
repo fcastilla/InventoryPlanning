@@ -60,7 +60,7 @@ class ProblemData:
             # raffle a demand error inside the error interval
             error = 0
             if uncertainty > 0:
-                error = np.random.normal(0, uncertainty)
+                error = np.random.uniform(-2*uncertainty, 2*uncertainty)
 
             # compute the demand forecast for t on this iteration (day)
             fDemand = realDemand * (1 + (error/10))

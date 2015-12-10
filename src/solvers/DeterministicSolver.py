@@ -63,7 +63,6 @@ class DeterministicSolver:
             v.col = self.numCols
             v.instant = i
             v.type = Variable.v_reposition
-            maxReposition = self.pData.maxDemand
             self.variables[v.name] = v
             self.lp.variables.add(obj=[-params.unitCost], names=[v.name])
             self.numCols += 1
@@ -102,8 +101,8 @@ class DeterministicSolver:
             self.initialStock[t] = self.pData.getInitialStock()
         else:
             self.initialStock[t] = self.initialStock[t-1] - self.pData.demandDataList[t-1].demand
-            if t-2 > 0:
-                self.initialStock[t] += self.repositions[t-2]
+            if t-params.leadTime > 0:
+                self.initialStock[t] += self.repositions[t-params.leadTime]
 
         self.initialStock[t] = max(0, self.initialStock[t])
 
@@ -129,7 +128,7 @@ class DeterministicSolver:
             s1 = self.getVariable("s" + str(t+1))
             d = self.getVariable("d" + str(t))
             f = self.getVariable("f" + str(t))
-            r = self.getVariable("r" + str(t-1))
+            r = self.getVariable("r" + str(t-params.leadTime+1))
 
             mind.append(s.name)
             mval.append(1.0)
@@ -145,8 +144,8 @@ class DeterministicSolver:
             if r != 0:
                 mind.append(r.name)
                 mval.append(1.0)
-            elif (t-1) >= 0: # get data from previous iterations
-                rhs -= self.repositions[t-1]
+            elif (t-params.leadTime+1) >= 0: # get data from previous iterations
+                rhs -= self.repositions[t-params.leadTime+1]
 
             self.createConstraint(mind,mval,"E",rhs,"stock_flow" + str(t))
             numCons += 1

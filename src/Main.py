@@ -25,7 +25,7 @@ class InventoryPlanner:
             params.currentUncertainty = u
             for r in params.robustness:
                 params.currentRobustness = r
-                self.run()
+                self.executePlanning()
 
     def executePlanning(self):
         # initialize problem data
@@ -104,7 +104,7 @@ class InventoryPlanner:
         fileName = ".\\..\\output\\Inventory_u" + str(params.currentUncertainty).replace(".","") + \
                    "_r" + str(params.currentRobustness).replace(".","") + ".csv"
 
-        line = str(day) + ";" + '{:.2f}'.format(realDemand).replace(".",",")  + ";" + '{:.2f}'.format(dObj).replace(".",",") + ";" \
+        line = str(day) + ";" + '{:.2f}'.format(realDemand).replace(".",",") + ";" + '{:.2f}'.format(dObj).replace(".",",") + ";" \
                +  '{:.2f}'.format(dRep).replace(".",",") + ";" + '{:.2f}'.format(rObj).replace(".",",") + ";" \
                + '{:.2f}'.format(rRep).replace(".",",") + "\n"
 
@@ -113,7 +113,8 @@ class InventoryPlanner:
         f.close()
 
     def saveDemandData(self, day):
-        fileName = ".\\..\\output\\Demand_day" + str(day) + ".csv"
+        fileName = ".\\..\\output\\Demand_u" + str(params.currentUncertainty) + "_r" +\
+                       str(params.currentRobustness) + "_day" + str(day) + ".csv"
         f = open(fileName,"a")
         line = "Dia;Superior;Inferior;Forecast;Uncertainty;Real\n"
         f.write(line)
