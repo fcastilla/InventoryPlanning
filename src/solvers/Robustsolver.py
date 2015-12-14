@@ -19,6 +19,9 @@ class RobustSolver:
         self.finalDay = self.currentDay + params.horizon
         self.repositions = [0 for i in range(0, len(pData.demandDataList))]  # the amounts repositioned to stock for each day
         self.initialStock = [0 for i in range(0, len(pData.demandDataList))]  # the initial stock at each iteration
+        self.plannedRepositions = [[0 for i in range(len(pData.demandDataList))] for t in range(params.horizon)]
+        self.plannedStocks = [[0 for i in range(len(pData.demandDataList))] for t in range(params.horizon)]
+        self.plannedFaults = [[0 for i in range(len(pData.demandDataList))] for t in range(params.horizon)]
         self.lp = 0
         self.variables = {}
         self.numCols = 0
@@ -59,7 +62,7 @@ class RobustSolver:
             v.col = self.numCols
             v.instant = i
             self.variables[v.name] = v
-            self.lp.variables.add(ub=[100000000.0], names=[v.name])
+            self.lp.variables.add(names=[v.name])
             self.numCols += 1
             numVars += 1
 
@@ -179,8 +182,8 @@ class RobustSolver:
             self.initialStock[t] = self.pData.getInitialStock()
         else:
             self.initialStock[t] = self.initialStock[t-1] - self.pData.demandDataList[t-1].demand
-            if t - params.leadTime > 0:
-                self.initialStock[t] += self.repositions[t-params.leadTime]
+            if t - params.currentLeadTime > 0:
+                self.initialStock[t] += self.repositions[t-params.currentLeadTime]
 
         self.initialStock[t] = max(0, self.initialStock[t])
 
@@ -217,7 +220,7 @@ class RobustSolver:
                 s = self.getVariable("s_" + scenario.id + "_" + str(t))
                 s1 = self.getVariable("s_" + scenario.id + "_" + str(t+1))
                 f = self.getVariable("f_" + scenario.id + "_" + str(t))
-                r = self.getVariable("r_" + str(t-params.leadTime+1))
+                r = self.getVariable("r_" + str(t-params.currentLeadTime+1))
 
                 mind.append(s.col)
                 mval.append(1.0)
@@ -231,8 +234,8 @@ class RobustSolver:
                 if r != 0:
                     mind.append(r.col)
                     mval.append(1.0)
-                elif (t-params.leadTime+1) >= 0:
-                    rhs -= self.repositions[t-params.leadTime+1]
+                elif (t-params.currentLeadTime+1) >= 0:
+                    rhs -= self.repositions[t-params.currentLeadTime+1]
 
                 self.createConstraint(mind,mval,"E",rhs,"stock_flow_" + scenario.id + "_" + str(t))
                 numCons += 1
@@ -362,70 +365,41 @@ class RobustSolver:
 
             zpVal = x[zp.col]
             znVal = x[zn.col]
-            zval = 0
 
             if zpVal > 0:
                 vname = "zsp"
                 zval = zpVal
-                print vname + "_" + str(zval)
             else:
                 vname = "zsn"
                 zval = znVal
-                print vname + "_" + str(zval)
 
             mScenario = 0
             for scenario in self.scenarios:
                 zvar = self.getVariable(vname + "_" + str(scenario.id))
                 if x[zvar.col] == zval:
-                    print vname + "_" + str(zvar.col) + "_" + str(x[zvar.col])
                     mScenario = scenario
                     break
 
-            # save the obtained reposition for the current day, if any
-            fileName = ".\\..\\output\\StockNReposition_u" + str(params.currentUncertainty) + "_r" +\
-                       str(params.currentRobustness) + "_day" + str(day) + ".csv"
-            f = open(fileName,"a")
-            line = "Dia;Scenario;Demand;Stock;Fault;Reposition\n"
-            f.write(line)
+            # save the solution data
             for t in range(self.currentDay, self.finalDay):
-                line = str(t) + ";" + str(mScenario.id) + ";"
-
-                # Demand
-                demand = mScenario.forecast[t]
-                line += '{:.2f}'.format(demand).replace(".",",") + ";"
-
                 # Stock
                 s = self.getVariable("s_" + str(mScenario.id) + "_" + str(t))
                 if s != 0:
                     val = x[s.col]
-                    line += '{:.2f}'.format(val).replace(".",",") + ";"
-                else:
-                    line += "0;"
+                    self.plannedStocks[self.currentDay][t] = val
 
                 # Falta
                 fvar = self.getVariable("f_" + str(mScenario.id) + "_" + str(t))
-                if f != 0:
+                if fvar != 0:
                     val = x[fvar.col]
-                    line += '{:.2f}'.format(val).replace(".",",") + ";"
-                else:
-                    line += "0;"
+                    self.plannedFaults[self.currentDay][t] = val
 
                 # Repositioning
                 r = self.getVariable("r_" + str(t))
                 if r != 0:
                     if t == self.currentDay:
                         self.repositions[self.currentDay] = x[r.col]
-                    line += '{:.2f}'.format(x[r.col]).replace(".",",") + ";"
-                else:
-                    line += "0;"
-
-                line += "\n"
-                f.write(line)
-            f.close()
-
-            # save a problem solution with the above data
-            self.problemSolution = ProblemSolution(self.currentDay,
-                                                   self.repositions[self.currentDay])
+                    self.plannedRepositions[self.currentDay][t] = x[r.col]
 
         except:
             print "Error on t" + str(self.currentDay)

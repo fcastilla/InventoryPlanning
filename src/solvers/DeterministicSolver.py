@@ -17,6 +17,9 @@ class DeterministicSolver:
         self.finalDay = self.currentDay + params.horizon
         self.repositions = [0 for i in range(0, len(pData.demandDataList))]  # the amounts repositioned to stock for each day
         self.initialStock = [0 for i in range(0, len(pData.demandDataList))]  # the initial stock at each iteration
+        self.plannedRepositions = [[0 for i in range(len(pData.demandDataList))] for t in range(params.horizon)]
+        self.plannedStocks = [[0 for i in range(len(pData.demandDataList))] for t in range(params.horizon)]
+        self.plannedFaults = [[0 for i in range(len(pData.demandDataList))] for t in range(params.horizon)]
         self.lp = 0
         self.variables = {}
         self.numCols = 0
@@ -101,8 +104,8 @@ class DeterministicSolver:
             self.initialStock[t] = self.pData.getInitialStock()
         else:
             self.initialStock[t] = self.initialStock[t-1] - self.pData.demandDataList[t-1].demand
-            if t-params.leadTime > 0:
-                self.initialStock[t] += self.repositions[t-params.leadTime]
+            if t-params.currentLeadTime > 0:
+                self.initialStock[t] += self.repositions[t-params.currentLeadTime]
 
         self.initialStock[t] = max(0, self.initialStock[t])
 
@@ -119,7 +122,7 @@ class DeterministicSolver:
     def createStockFlowConstraint(self):
         numCons = 0
         # s_{t} + r_{t-1} + f_{t} - s_{t+1} = d_{t}
-        for t in range(self.currentDay, self.finalDay):
+        for t in range(self.currentDay, self.finalDay-1):
             mind =[]
             mval =[]
             rhs = 0.0
@@ -128,7 +131,7 @@ class DeterministicSolver:
             s1 = self.getVariable("s" + str(t+1))
             d = self.getVariable("d" + str(t))
             f = self.getVariable("f" + str(t))
-            r = self.getVariable("r" + str(t-params.leadTime+1))
+            r = self.getVariable("r" + str(t-params.currentLeadTime+1))
 
             mind.append(s.name)
             mval.append(1.0)
@@ -144,8 +147,8 @@ class DeterministicSolver:
             if r != 0:
                 mind.append(r.name)
                 mval.append(1.0)
-            elif (t-params.leadTime+1) >= 0: # get data from previous iterations
-                rhs -= self.repositions[t-params.leadTime+1]
+            elif (t-params.currentLeadTime+1) >= 0: # get data from previous iterations
+                rhs -= self.repositions[t-params.currentLeadTime+1]
 
             self.createConstraint(mind,mval,"E",rhs,"stock_flow" + str(t))
             numCons += 1
@@ -192,12 +195,26 @@ class DeterministicSolver:
             x = solution.get_values()
 
             # save the obtained reposition for the current day, if any
-            v = self.getVariable("r" + str(self.currentDay))
-            if v != 0:
-                self.repositions[self.currentDay] = x[v.col]
+            # save the solution data
+            for t in range(self.currentDay, self.finalDay):
+                # Stock
+                s = self.getVariable("s" + str(t))
+                if s != 0:
+                    val = x[s.col]
+                    self.plannedStocks[self.currentDay][t] = val
 
-            self.problemSolution = ProblemSolution(self.currentDay,
-                                                   self.repositions[self.currentDay])
+                # Falta
+                fvar = self.getVariable("f" + str(t))
+                if fvar != 0:
+                    val = x[fvar.col]
+                    self.plannedFaults[self.currentDay][t] = val
+
+                # Repositioning
+                r = self.getVariable("r" + str(t))
+                if r != 0:
+                    if t == self.currentDay:
+                        self.repositions[self.currentDay] = x[r.col]
+                    self.plannedRepositions[self.currentDay][t] = x[r.col]
 
         except:
             print "Error on t" + str(self.currentDay)

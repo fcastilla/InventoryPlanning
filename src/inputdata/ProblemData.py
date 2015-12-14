@@ -45,7 +45,7 @@ class ProblemData:
             self.repositionDays = days
             return
 
-        for i in range(params.initialDay, len(self.demandDataList), params.repositionInterval):
+        for i in range(params.initialDay, len(self.demandDataList), params.currentRepositionInterval):
             self.repositionDays.append(i)
 
     def computeForecast(self, t0):
@@ -63,7 +63,7 @@ class ProblemData:
                 error = np.random.uniform(-2*uncertainty, 2*uncertainty)
 
             # compute the demand forecast for t on this iteration (day)
-            fDemand = realDemand * (1 + (error/10))
+            fDemand = realDemand * (1 + (error/5))
             self.forecast[t0][t] = fDemand
 
             t += 1

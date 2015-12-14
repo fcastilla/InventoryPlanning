@@ -14,12 +14,16 @@ class Parameters:
     repositionInterval = 3
     leadTime = 5
     robustInterval = 7
-    currentUncertainty = 0.4
-    currentRobustness = 3
+    currentLeadTime = 5
+    currentRepositionInterval = 3
+    currentUncertainty = 0.8
+    currentRobustness = 1
 
     # Experiments data
-    uncertainties = [0.05,0.1,0.15,0.2]
-    robustness = [1,1.5,2,2.5,3]
+    uncertainties = [0.3,0.4,0.5]
+    robustness = [1,2,3]
+    leadTimes = [3,4,5]
+    repositionIntervals = [3,5]
 
 
 

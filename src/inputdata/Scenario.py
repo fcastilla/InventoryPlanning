@@ -40,7 +40,7 @@ class Scenario:
             errorInterval = self.pData.getCurrentUncertaintyInterval(t0, t)
 
             # compute deviation
-            deviation = demandForecast * errorInterval
+            deviation = demandForecast * (errorInterval / 5)
 
             # forecast for t on this scenario
             self.forecast[t] = max(0, demandForecast + (deviation * self.y[t]))
